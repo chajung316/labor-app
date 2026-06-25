@@ -52,6 +52,8 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .info-box { background: #e3f2fd; border-radius: 8px; padding: 12px 14px; font-size: 13px; color: #1565c0; line-height: 1.7; margin-bottom: 1rem; }
+.worker-info { display: flex; gap: 8px; margin-bottom: 0.5rem; }
+.worker-info .badge-job { font-size: 12px; padding: 3px 10px; border-radius: 20px; background: #fff3e0; color: #e65100; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -81,6 +83,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
     <div id="w-result" style="display:none;">
       <div class="card">
         <div class="card-title" id="w-name-label"></div>
+        <div id="w-job-badge" class="worker-info"></div>
         <div class="stat-grid">
           <div class="stat"><div class="val" id="w-total-days">0</div><div class="lbl">출력일수</div></div>
           <div class="stat"><div class="val" id="w-total-work">0</div><div class="lbl">출력공수</div></div>
@@ -100,7 +103,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
       <div class="card-title">엑셀 파일 업로드</div>
       <div class="info-box">
         엑셀 컬럼 순서 (2행씩 묶음):<br>
-        <strong>번호 | 성명 | 비번 | 1일~31일 | 출력일수 | 출력공수</strong><br>
+        <strong>번호 | 직종 | 성명 | 비번 | 1일~31일 | 출력일수 | 출력공수</strong><br>
         윗줄 = 일수, 아랫줄 = 공수
       </div>
       <label>현장명</label>
@@ -117,7 +120,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
         <div class="preview-table-wrap">
           <table class="preview-table" id="u-table"></table>
         </div>
-        <button class="btn green" onclick="uploadToSupabase()" id="u-btn">💾 Supabase에 저장하기</button>
+        <button class="btn green" onclick="uploadToSupabase()" id="u-btn">💾 저장하기</button>
         <div class="progress" id="u-progress" style="display:none;"><div class="progress-bar" id="u-bar" style="width:0%"></div></div>
         <div id="u-msg" class="msg"></div>
       </div>
@@ -187,7 +190,7 @@ async function workerLogin() {
   const month = document.getElementById('w-month').value;
   if (!name || !pass || !site || !month) return showMsg('w-msg','모두 입력해주세요','error');
   try {
-    const workers = await db('GET', 'workers', null, `name=eq.${encodeURIComponent(name)}&password=eq.${encodeURIComponent(pass)}&select=id,name`);
+    const workers = await db('GET', 'workers', null, `name=eq.${encodeURIComponent(name)}&password=eq.${encodeURIComponent(pass)}&select=id,name,job_type`);
     if (!workers || workers.length === 0) return showMsg('w-msg','이름 또는 비밀번호가 틀렸어요','error');
     const worker = workers[0];
     const records = await db('GET', 'work_records', null, `worker_id=eq.${worker.id}&site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=daily_days,daily_work,total_days,total_work,site_name`);
@@ -195,6 +198,7 @@ async function workerLogin() {
     const rec = records[0];
     document.getElementById('w-msg').className = 'msg';
     document.getElementById('w-name-label').textContent = `${worker.name}님의 공수`;
+    document.getElementById('w-job-badge').innerHTML = worker.job_type ? `<span class="badge-job">${worker.job_type}</span>` : '';
     document.getElementById('w-total-days').textContent = rec.total_days || 0;
     document.getElementById('w-total-work').textContent = parseFloat(rec.total_work || 0).toFixed(1);
     document.getElementById('w-site-label').textContent = `${rec.site_name} · ${month}`;
@@ -250,33 +254,33 @@ function parseWorkers(rows) {
     const nextRow = rows[i + 1] || [];
     const num = row[0];
     if (!num || isNaN(parseInt(num))) continue;
-    const name = String(row[1] || '').trim();
-    const password = String(row[2] || '').trim();
+    // 번호(0) | 직종(1) | 성명(2) | 비번(3) | 1~31일(4~34) | 출력일수(35) | 출력공수(nextRow)
+    const job_type = String(row[1] || '').trim();
+    const name = String(row[2] || '').trim();
+    const password = String(row[3] || '').trim();
     if (!name || !password) continue;
     const daily_days = {};
     const daily_work = {};
-    // 컬럼 3~33 = 1일~31일
     for (let d = 1; d <= 31; d++) {
-      const colIdx = 2 + d; // 0=번호,1=성명,2=비번, 3=1일...
+      const colIdx = 3 + d; // 0=번호,1=직종,2=성명,3=비번, 4=1일...
       const dayVal = parseFloat(row[colIdx]) || 0;
       const workVal = parseFloat(nextRow[colIdx]) || 0;
       if (dayVal > 0) daily_days[String(d)] = dayVal;
       if (workVal > 0) daily_work[String(d)] = workVal;
     }
-    // 출력일수: col 34, 출력공수: nextRow col 35 (또는 col 34)
-    const total_days = parseFloat(row[34]) || Object.values(daily_days).reduce((a,b) => a+b, 0);
-    const total_work = parseFloat(nextRow[34] || nextRow[35] || row[35]) || Object.values(daily_work).reduce((a,b) => a+b, 0);
-    workers.push({ num: parseInt(num), name, password, daily_days, daily_work, total_days, total_work });
-    i++; // 아랫줄(공수줄) 스킵
+    const total_days = parseFloat(row[35]) || Object.values(daily_days).reduce((a,b) => a+b, 0);
+    const total_work = parseFloat(nextRow[35] || nextRow[36] || row[36]) || Object.values(daily_work).reduce((a,b) => a+b, 0);
+    workers.push({ num: parseInt(num), job_type, name, password, daily_days, daily_work, total_days, total_work });
+    i++;
   }
   return workers;
 }
 
 function showPreview(workers) {
   document.getElementById('u-count').textContent = workers.length;
-  let html = '<tr><th>번호</th><th>성명</th><th>비번</th><th>출력일수</th><th>출력공수</th></tr>';
+  let html = '<tr><th>번호</th><th>직종</th><th>성명</th><th>비번</th><th>출력일수</th><th>출력공수</th></tr>';
   workers.forEach(w => {
-    html += `<tr><td>${w.num}</td><td>${w.name}</td><td>${w.password}</td><td>${w.total_days}</td><td>${w.total_work.toFixed(1)}</td></tr>`;
+    html += `<tr><td>${w.num}</td><td>${w.job_type}</td><td>${w.name}</td><td>${w.password}</td><td>${w.total_days}</td><td>${w.total_work.toFixed(1)}</td></tr>`;
   });
   document.getElementById('u-table').innerHTML = html;
   document.getElementById('u-preview').style.display = 'block';
@@ -296,25 +300,17 @@ async function uploadToSupabase() {
     const w = parsedWorkers[i];
     document.getElementById('u-bar').style.width = Math.round((i / parsedWorkers.length) * 100) + '%';
     try {
-      // 작업자 등록 또는 업데이트 (이름 기준)
       const existing = await db('GET', 'workers', null, `name=eq.${encodeURIComponent(w.name)}&select=id`);
       let worker_id;
       if (existing && existing.length > 0) {
         worker_id = existing[0].id;
-        await db('PATCH', `workers?id=eq.${worker_id}`, { password: w.password });
+        await db('PATCH', `workers?id=eq.${worker_id}`, { password: w.password, job_type: w.job_type });
       } else {
-        const created = await db('POST', 'workers', { name: w.name, password: w.password });
+        const created = await db('POST', 'workers', { name: w.name, password: w.password, job_type: w.job_type });
         worker_id = created[0].id;
       }
-      // 공수 기록 저장
       const recExist = await db('GET', 'work_records', null, `worker_id=eq.${worker_id}&site_name=eq.${encodeURIComponent(site_name)}&year_month=eq.${year_month}&select=id`);
-      const payload = {
-        worker_id, site_name, year_month,
-        daily_days: w.daily_days,
-        daily_work: w.daily_work,
-        total_days: w.total_days,
-        total_work: parseFloat(w.total_work.toFixed(2))
-      };
+      const payload = { worker_id, site_name, year_month, daily_days: w.daily_days, daily_work: w.daily_work, total_days: w.total_days, total_work: parseFloat(w.total_work.toFixed(2)) };
       if (recExist && recExist.length > 0) {
         await db('PATCH', `work_records?id=eq.${recExist[0].id}`, payload);
       } else {
@@ -327,34 +323,27 @@ async function uploadToSupabase() {
     }
   }
   document.getElementById('u-bar').style.width = '100%';
-  btn.innerHTML = '저장 완료';
+  btn.innerHTML = '✅ 저장 완료';
   btn.disabled = false;
-  if (fail === 0) {
-    showMsg('u-msg', `✅ ${success}명 저장 완료!`, 'success');
-  } else {
-    showMsg('u-msg', `저장 ${success}명 완료 / 실패 ${fail}명 (콘솔 확인)`, 'error');
-  }
+  showMsg('u-msg', fail === 0 ? `${success}명 저장 완료!` : `저장 ${success}명 / 실패 ${fail}명`, fail === 0 ? 'success' : 'error');
 }
 
 async function loadList() {
   const body = document.getElementById('list-body');
   try {
-    const data = await db('GET', 'workers', null, 'select=name,created_at&order=name');
-    if (!data || data.length === 0) {
-      body.innerHTML = '<div style="padding:1rem 0;color:#aaa;">등록된 작업자가 없어요</div>';
-      return;
-    }
+    const data = await db('GET', 'workers', null, 'select=name,job_type,created_at&order=name');
+    if (!data || data.length === 0) { body.innerHTML = '<div style="padding:1rem 0;color:#aaa;">등록된 작업자가 없어요</div>'; return; }
     body.innerHTML = data.map(w => `
       <div class="worker-row">
-        <div style="font-size:14px;font-weight:600;">${w.name}</div>
+        <div>
+          <div style="font-size:14px;font-weight:600;">${w.name}</div>
+          <div style="font-size:12px;color:#999;">${w.job_type || ''}</div>
+        </div>
         <span class="badge">등록됨</span>
       </div>`).join('');
-  } catch(e) {
-    body.innerHTML = `<div style="color:#c62828;font-size:14px;">오류: ${e.message}</div>`;
-  }
+  } catch(e) { body.innerHTML = `<div style="color:#c62828;font-size:14px;">오류: ${e.message}</div>`; }
 }
 
-// 초기값
 const now = new Date();
 const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
 document.getElementById('w-month').value = ym;
