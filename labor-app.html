@@ -101,11 +101,11 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
     <div class="card">
       <div class="card-title">엑셀 파일 업로드</div>
       <div class="info-box">
-        엑셀 구조:<br>
+        엑셀 구조 (1~3행 헤더, 4행부터 데이터):<br>
         <strong>A=번호 | B=직종 | C=성명 | D=비번</strong><br>
         <strong>E~S = 1~15일 (윗줄)</strong><br>
         <strong>E~T = 16~31일 (아랫줄)</strong><br>
-        한 사람당 2행, 공수값만 입력
+        <strong>U=공수합계 | V=일수합계</strong>
       </div>
       <label>현장명</label>
       <input type="text" id="u-site" placeholder="신안산선 매화역 #1번 현장">
@@ -245,24 +245,29 @@ function previewExcel(input) {
 
 function parseWorkers(rows) {
   const workers = [];
-  for (let i = 0; i < rows.length - 1; i++) {
-    const row = rows[i];       // 윗줄: 1~15일 (E~S = col 4~18)
-    const nextRow = rows[i+1] || []; // 아랫줄: 16~31일 (E~T = col 4~19)
-    const num = row[0];
-    if (!num || isNaN(parseInt(num))) continue;
+  // 1~3행은 헤더 → index 0,1,2 스킵, index 3(4행)부터 시작
+  // 한 사람당 2행씩 (윗줄/아랫줄)
+  let i = 3;
+  while (i < rows.length - 1) {
+    const topRow = rows[i];       // 윗줄: 번호,직종,성명,비번 + 1~15일
+    const botRow = rows[i+1] || []; // 아랫줄: 16~31일
 
-    const job_type = String(row[1] || '').trim();
-    const name = String(row[2] || '').trim();
-    const password = String(row[3] || '').trim();
-    if (!name || !password) continue;
+    const num = topRow[0];
+    // 번호가 숫자가 아니면 (합계행 등) 스킵
+    if (!num || isNaN(parseInt(num))) { i += 2; continue; }
+
+    const job_type = String(topRow[1] || '').trim();
+    const name = String(topRow[2] || '').trim();
+    const password = String(topRow[3] || '').trim();
+    if (!name || !password) { i += 2; continue; }
 
     const daily_work = {};
     let total_work = 0;
     let total_days = 0;
 
-    // 윗줄: 1~15일 → col 4~18 (E~S)
+    // 윗줄: 1~15일 → E~S = col index 4~18
     for (let d = 1; d <= 15; d++) {
-      const val = parseFloat(row[3 + d]) || 0; // col 4=1일, 5=2일 ... 18=15일
+      const val = parseFloat(topRow[3 + d]) || 0; // col4=1일, col5=2일...col18=15일
       if (val > 0) {
         daily_work[String(d)] = val;
         total_work += val;
@@ -270,9 +275,10 @@ function parseWorkers(rows) {
       }
     }
 
-    // 아랫줄: 16~31일 → col 4~19 (E~T)
+    // 아랫줄: 16~31일 → E~T = col index 4~19 (최대 16칸)
     for (let d = 16; d <= 31; d++) {
-      const val = parseFloat(nextRow[3 + (d - 15)]) || 0; // col 4=16일, 5=17일 ... 19=31일 (최대 16칸)
+      const colIdx = 4 + (d - 16); // col4=16일, col5=17일...col19=31일
+      const val = parseFloat(botRow[colIdx]) || 0;
       if (val > 0) {
         daily_work[String(d)] = val;
         total_work += val;
@@ -280,8 +286,19 @@ function parseWorkers(rows) {
       }
     }
 
-    workers.push({ num: parseInt(num), job_type, name, password, daily_work, total_days, total_work });
-    i++; // 아랫줄 스킵
+    // U열(index 20)=공수합계, V열(index 21)=일수합계 (엑셀값 우선)
+    const excelWork = parseFloat(topRow[20]) || 0;
+    const excelDays = parseFloat(topRow[21]) || 0;
+
+    workers.push({
+      num: parseInt(num),
+      job_type, name, password,
+      daily_work,
+      total_work: excelWork > 0 ? excelWork : parseFloat(total_work.toFixed(2)),
+      total_days: excelDays > 0 ? excelDays : total_days
+    });
+
+    i += 2;
   }
   return workers;
 }
@@ -320,12 +337,7 @@ async function uploadToSupabase() {
         worker_id = created[0].id;
       }
       const recExist = await db('GET', 'work_records', null, `worker_id=eq.${worker_id}&site_name=eq.${encodeURIComponent(site_name)}&year_month=eq.${year_month}&select=id`);
-      const payload = {
-        worker_id, site_name, year_month,
-        daily_work: w.daily_work,
-        total_days: w.total_days,
-        total_work: parseFloat(w.total_work.toFixed(2))
-      };
+      const payload = { worker_id, site_name, year_month, daily_work: w.daily_work, total_days: w.total_days, total_work: w.total_work };
       if (recExist && recExist.length > 0) {
         await db('PATCH', `work_records?id=eq.${recExist[0].id}`, payload);
       } else {
@@ -356,7 +368,7 @@ async function loadList() {
         </div>
         <span class="badge">등록됨</span>
       </div>`).join('');
-  } catch(e) { body.innerHTML = `<div style="color:#c62828;font-size:14px;">오류: ${e.message}</div>`; }
+  } catch(e) { body.innerHTML = `<div style="color:#c62828;">오류: ${e.message}</div>`; }
 }
 
 const now = new Date();
