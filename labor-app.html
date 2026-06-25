@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>노무비 공수 조회</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #222; }
+.container { max-width: 520px; margin: 0 auto; padding: 1rem; }
+h1 { font-size: 20px; font-weight: 600; text-align: center; padding: 1.2rem 0 1rem; color: #1a1a1a; }
+.tab-bar { display: flex; gap: 8px; margin-bottom: 1.2rem; }
+.tab { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 8px; background: #fff; color: #888; font-size: 14px; cursor: pointer; text-align: center; font-weight: 500; }
+.tab.active { background: #185FA5; color: #fff; border-color: #185FA5; }
+.screen { display: none; }
+.screen.active { display: block; }
+.card { background: #fff; border: 1px solid #e8e8e8; border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; }
+.card-title { font-size: 14px; color: #666; font-weight: 600; margin-bottom: 1rem; }
+label { font-size: 13px; color: #666; display: block; margin-bottom: 4px; margin-top: 12px; }
+label:first-of-type { margin-top: 0; }
+input, select { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; background: #fafafa; color: #222; outline: none; }
+input:focus, select:focus { border-color: #185FA5; background: #fff; }
+.btn { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 15px; cursor: pointer; margin-top: 1rem; background: #fff; color: #222; font-weight: 600; }
+.btn.primary { background: #185FA5; border-color: #185FA5; color: #fff; }
+.btn.green { background: #2e7d32; border-color: #2e7d32; color: #fff; }
+.msg { font-size: 13px; padding: 10px 12px; border-radius: 8px; margin-top: 1rem; display: none; }
+.msg.success { background: #e8f5e9; color: #2e7d32; display: block; }
+.msg.error { background: #fdecea; color: #c62828; display: block; }
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 1rem 0; }
+.stat { background: #f5f5f5; border-radius: 8px; padding: 1rem; text-align: center; }
+.stat .val { font-size: 30px; font-weight: 700; color: #185FA5; }
+.stat .lbl { font-size: 12px; color: #888; margin-top: 4px; }
+.day-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 0.75rem; }
+.day-table th { background: #f0f0f0; padding: 5px 3px; text-align: center; font-weight: 600; color: #555; border: 1px solid #e0e0e0; min-width: 22px; }
+.day-table td { padding: 5px 3px; text-align: center; border: 1px solid #e8e8e8; color: #333; }
+.day-table td.worked { background: #e3f2fd; color: #1565c0; font-weight: 600; }
+.day-table td.row-label { font-weight: 600; color: #555; background: #fafafa; white-space: nowrap; }
+.site-info { font-size: 12px; color: #999; text-align: right; margin-top: 8px; }
+.worker-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
+.worker-row:last-child { border-bottom: none; }
+.badge { font-size: 11px; padding: 3px 10px; border-radius: 20px; background: #e3f2fd; color: #1565c0; font-weight: 600; }
+.upload-area { border: 2px dashed #bbb; border-radius: 10px; padding: 2rem; text-align: center; cursor: pointer; color: #888; font-size: 14px; margin-bottom: 1rem; background: #fafafa; }
+.upload-area:hover { border-color: #185FA5; color: #185FA5; }
+.preview-table-wrap { overflow-x: auto; margin-top: 0.5rem; }
+.preview-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.preview-table th { background: #185FA5; color: #fff; padding: 5px 8px; text-align: left; white-space: nowrap; }
+.preview-table td { padding: 5px 8px; border-bottom: 1px solid #eee; white-space: nowrap; }
+.preview-table tr:nth-child(even) td { background: #f9f9f9; }
+.progress { height: 6px; background: #e0e0e0; border-radius: 3px; margin-top: 1rem; overflow: hidden; }
+.progress-bar { height: 100%; background: #185FA5; border-radius: 3px; transition: width 0.3s; }
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.info-box { background: #e3f2fd; border-radius: 8px; padding: 12px 14px; font-size: 13px; color: #1565c0; line-height: 1.7; margin-bottom: 1rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>⚒️ 노무비 공수 조회</h1>
+  <div class="tab-bar">
+    <div class="tab active" onclick="showTab('worker')">공수 조회</div>
+    <div class="tab" onclick="showTab('upload')">엑셀 업로드</div>
+    <div class="tab" onclick="showTab('list')">인원 목록</div>
+  </div>
+
+  <!-- 작업자 조회 -->
+  <div id="screen-worker" class="screen active">
+    <div class="card">
+      <div class="card-title">본인 공수 조회</div>
+      <label>이름</label>
+      <input type="text" id="w-name" placeholder="홍길동">
+      <label>비밀번호</label>
+      <input type="password" id="w-pass" placeholder="비밀번호 입력">
+      <label>현장 선택</label>
+      <select id="w-site"><option value="">-- 현장 선택 --</option></select>
+      <label>조회 월</label>
+      <input type="month" id="w-month">
+      <button class="btn primary" onclick="workerLogin()">조회하기</button>
+      <div id="w-msg" class="msg"></div>
+    </div>
+    <div id="w-result" style="display:none;">
+      <div class="card">
+        <div class="card-title" id="w-name-label"></div>
+        <div class="stat-grid">
+          <div class="stat"><div class="val" id="w-total-days">0</div><div class="lbl">출력일수</div></div>
+          <div class="stat"><div class="val" id="w-total-work">0</div><div class="lbl">출력공수</div></div>
+        </div>
+        <div class="card-title" style="margin-top:0.5rem;">일별 근로 내역</div>
+        <div style="overflow-x:auto;">
+          <table class="day-table" id="w-daytable"></table>
+        </div>
+        <div class="site-info" id="w-site-label"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 엑셀 업로드 -->
+  <div id="screen-upload" class="screen">
+    <div class="card">
+      <div class="card-title">엑셀 파일 업로드</div>
+      <div class="info-box">
+        엑셀 컬럼 순서 (2행씩 묶음):<br>
+        <strong>번호 | 성명 | 비번 | 1일~31일 | 출력일수 | 출력공수</strong><br>
+        윗줄 = 일수, 아랫줄 = 공수
+      </div>
+      <label>현장명</label>
+      <input type="text" id="u-site" placeholder="신안산선 매화역 #1번 현장">
+      <label>년월</label>
+      <input type="month" id="u-month">
+      <div class="upload-area" onclick="document.getElementById('u-file').click()">
+        <input type="file" id="u-file" accept=".xlsx,.xls" onchange="previewExcel(this)">
+        📂 엑셀 파일을 클릭해서 선택하세요<br>
+        <span style="font-size:12px;">(.xlsx, .xls 지원)</span>
+      </div>
+      <div id="u-preview" style="display:none;">
+        <div class="card-title"><span id="u-count">0</span>명 미리보기</div>
+        <div class="preview-table-wrap">
+          <table class="preview-table" id="u-table"></table>
+        </div>
+        <button class="btn green" onclick="uploadToSupabase()" id="u-btn">💾 Supabase에 저장하기</button>
+        <div class="progress" id="u-progress" style="display:none;"><div class="progress-bar" id="u-bar" style="width:0%"></div></div>
+        <div id="u-msg" class="msg"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 인원 목록 -->
+  <div id="screen-list" class="screen">
+    <div class="card">
+      <div class="card-title">등록된 작업자</div>
+      <div id="list-body" style="font-size:14px; color:#888; padding:1rem 0;">불러오는 중...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPA_URL = 'https://iolokjrqgxdvtztssvql.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlvbG9ranJxZ3hkdnR6dHNzdnFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzODgwMjcsImV4cCI6MjA5Nzk2NDAyN30.Zr2pE1JsziO4V__AVAKiI2BDRqyda_vS_p95PqTL9S8';
+
+async function db(method, table, body, params) {
+  let url = `${SUPA_URL}/rest/v1/${table}`;
+  if (params) url += '?' + params;
+  const res = await fetch(url, {
+    method,
+    headers: {
+      'apikey': SUPA_KEY,
+      'Authorization': 'Bearer ' + SUPA_KEY,
+      'Content-Type': 'application/json',
+      'Prefer': method === 'POST' ? 'return=representation' : 'return=minimal'
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (!res.ok) { const e = await res.json(); throw new Error(e.message || JSON.stringify(e)); }
+  if (res.status === 204 || method === 'PATCH') return null;
+  return res.json();
+}
+
+function showMsg(id, text, type) {
+  const el = document.getElementById(id);
+  el.className = 'msg ' + type;
+  el.textContent = text;
+}
+
+function showTab(tab) {
+  ['worker','upload','list'].forEach((t,i) => {
+    document.querySelectorAll('.tab')[i].classList.toggle('active', t === tab);
+    document.getElementById('screen-' + t).classList.toggle('active', t === tab);
+  });
+  if (tab === 'list') loadList();
+  if (tab === 'worker') loadSites();
+}
+
+async function loadSites() {
+  try {
+    const data = await db('GET', 'work_records', null, 'select=site_name');
+    const sites = [...new Set(data.map(d => d.site_name))];
+    const sel = document.getElementById('w-site');
+    sel.innerHTML = '<option value="">-- 현장 선택 --</option>';
+    sites.forEach(s => sel.innerHTML += `<option value="${s}">${s}</option>`);
+  } catch(e) {}
+}
+
+async function workerLogin() {
+  const name = document.getElementById('w-name').value.trim();
+  const pass = document.getElementById('w-pass').value.trim();
+  const site = document.getElementById('w-site').value;
+  const month = document.getElementById('w-month').value;
+  if (!name || !pass || !site || !month) return showMsg('w-msg','모두 입력해주세요','error');
+  try {
+    const workers = await db('GET', 'workers', null, `name=eq.${encodeURIComponent(name)}&password=eq.${encodeURIComponent(pass)}&select=id,name`);
+    if (!workers || workers.length === 0) return showMsg('w-msg','이름 또는 비밀번호가 틀렸어요','error');
+    const worker = workers[0];
+    const records = await db('GET', 'work_records', null, `worker_id=eq.${worker.id}&site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=daily_days,daily_work,total_days,total_work,site_name`);
+    if (!records || records.length === 0) return showMsg('w-msg','해당 월의 공수 기록이 없어요','error');
+    const rec = records[0];
+    document.getElementById('w-msg').className = 'msg';
+    document.getElementById('w-name-label').textContent = `${worker.name}님의 공수`;
+    document.getElementById('w-total-days').textContent = rec.total_days || 0;
+    document.getElementById('w-total-work').textContent = parseFloat(rec.total_work || 0).toFixed(1);
+    document.getElementById('w-site-label').textContent = `${rec.site_name} · ${month}`;
+    renderDayTable(rec, month);
+    document.getElementById('w-result').style.display = 'block';
+  } catch(e) { showMsg('w-msg', e.message, 'error'); }
+}
+
+function renderDayTable(rec, month) {
+  const [yr, mo] = month.split('-').map(Number);
+  const daysInMonth = new Date(yr, mo, 0).getDate();
+  const days = rec.daily_days || {};
+  const works = rec.daily_work || {};
+  let header = '<tr><th>구분</th>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dow = new Date(yr, mo-1, d).getDay();
+    const style = dow === 0 ? ' style="color:#c62828"' : dow === 6 ? ' style="color:#1565c0"' : '';
+    header += `<th${style}>${d}</th>`;
+  }
+  header += '</tr>';
+  let row1 = '<tr><td class="row-label">일수</td>';
+  let row2 = '<tr><td class="row-label">공수</td>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dv = days[String(d)];
+    const wv = works[String(d)];
+    row1 += dv ? `<td class="worked">${dv}</td>` : '<td></td>';
+    row2 += wv ? `<td class="worked">${wv}</td>` : '<td></td>';
+  }
+  row1 += '</tr>'; row2 += '</tr>';
+  document.getElementById('w-daytable').innerHTML = header + row1 + row2;
+}
+
+let parsedWorkers = [];
+
+function previewExcel(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const wb = XLSX.read(e.target.result, { type: 'binary' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    parsedWorkers = parseWorkers(raw);
+    showPreview(parsedWorkers);
+  };
+  reader.readAsBinaryString(file);
+}
+
+function parseWorkers(rows) {
+  const workers = [];
+  for (let i = 0; i < rows.length - 1; i++) {
+    const row = rows[i];
+    const nextRow = rows[i + 1] || [];
+    const num = row[0];
+    if (!num || isNaN(parseInt(num))) continue;
+    const name = String(row[1] || '').trim();
+    const password = String(row[2] || '').trim();
+    if (!name || !password) continue;
+    const daily_days = {};
+    const daily_work = {};
+    // 컬럼 3~33 = 1일~31일
+    for (let d = 1; d <= 31; d++) {
+      const colIdx = 2 + d; // 0=번호,1=성명,2=비번, 3=1일...
+      const dayVal = parseFloat(row[colIdx]) || 0;
+      const workVal = parseFloat(nextRow[colIdx]) || 0;
+      if (dayVal > 0) daily_days[String(d)] = dayVal;
+      if (workVal > 0) daily_work[String(d)] = workVal;
+    }
+    // 출력일수: col 34, 출력공수: nextRow col 35 (또는 col 34)
+    const total_days = parseFloat(row[34]) || Object.values(daily_days).reduce((a,b) => a+b, 0);
+    const total_work = parseFloat(nextRow[34] || nextRow[35] || row[35]) || Object.values(daily_work).reduce((a,b) => a+b, 0);
+    workers.push({ num: parseInt(num), name, password, daily_days, daily_work, total_days, total_work });
+    i++; // 아랫줄(공수줄) 스킵
+  }
+  return workers;
+}
+
+function showPreview(workers) {
+  document.getElementById('u-count').textContent = workers.length;
+  let html = '<tr><th>번호</th><th>성명</th><th>비번</th><th>출력일수</th><th>출력공수</th></tr>';
+  workers.forEach(w => {
+    html += `<tr><td>${w.num}</td><td>${w.name}</td><td>${w.password}</td><td>${w.total_days}</td><td>${w.total_work.toFixed(1)}</td></tr>`;
+  });
+  document.getElementById('u-table').innerHTML = html;
+  document.getElementById('u-preview').style.display = 'block';
+}
+
+async function uploadToSupabase() {
+  const site_name = document.getElementById('u-site').value.trim();
+  const year_month = document.getElementById('u-month').value;
+  if (!site_name || !year_month) return showMsg('u-msg','현장명과 년월을 입력해주세요','error');
+  if (parsedWorkers.length === 0) return showMsg('u-msg','엑셀 파일을 먼저 선택해주세요','error');
+  const btn = document.getElementById('u-btn');
+  btn.innerHTML = '<span class="spinner"></span>저장 중...';
+  btn.disabled = true;
+  document.getElementById('u-progress').style.display = 'block';
+  let success = 0, fail = 0;
+  for (let i = 0; i < parsedWorkers.length; i++) {
+    const w = parsedWorkers[i];
+    document.getElementById('u-bar').style.width = Math.round((i / parsedWorkers.length) * 100) + '%';
+    try {
+      // 작업자 등록 또는 업데이트 (이름 기준)
+      const existing = await db('GET', 'workers', null, `name=eq.${encodeURIComponent(w.name)}&select=id`);
+      let worker_id;
+      if (existing && existing.length > 0) {
+        worker_id = existing[0].id;
+        await db('PATCH', `workers?id=eq.${worker_id}`, { password: w.password });
+      } else {
+        const created = await db('POST', 'workers', { name: w.name, password: w.password });
+        worker_id = created[0].id;
+      }
+      // 공수 기록 저장
+      const recExist = await db('GET', 'work_records', null, `worker_id=eq.${worker_id}&site_name=eq.${encodeURIComponent(site_name)}&year_month=eq.${year_month}&select=id`);
+      const payload = {
+        worker_id, site_name, year_month,
+        daily_days: w.daily_days,
+        daily_work: w.daily_work,
+        total_days: w.total_days,
+        total_work: parseFloat(w.total_work.toFixed(2))
+      };
+      if (recExist && recExist.length > 0) {
+        await db('PATCH', `work_records?id=eq.${recExist[0].id}`, payload);
+      } else {
+        await db('POST', 'work_records', payload);
+      }
+      success++;
+    } catch(e) {
+      console.error(w.name, e);
+      fail++;
+    }
+  }
+  document.getElementById('u-bar').style.width = '100%';
+  btn.innerHTML = '저장 완료';
+  btn.disabled = false;
+  if (fail === 0) {
+    showMsg('u-msg', `✅ ${success}명 저장 완료!`, 'success');
+  } else {
+    showMsg('u-msg', `저장 ${success}명 완료 / 실패 ${fail}명 (콘솔 확인)`, 'error');
+  }
+}
+
+async function loadList() {
+  const body = document.getElementById('list-body');
+  try {
+    const data = await db('GET', 'workers', null, 'select=name,created_at&order=name');
+    if (!data || data.length === 0) {
+      body.innerHTML = '<div style="padding:1rem 0;color:#aaa;">등록된 작업자가 없어요</div>';
+      return;
+    }
+    body.innerHTML = data.map(w => `
+      <div class="worker-row">
+        <div style="font-size:14px;font-weight:600;">${w.name}</div>
+        <span class="badge">등록됨</span>
+      </div>`).join('');
+  } catch(e) {
+    body.innerHTML = `<div style="color:#c62828;font-size:14px;">오류: ${e.message}</div>`;
+  }
+}
+
+// 초기값
+const now = new Date();
+const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+document.getElementById('w-month').value = ym;
+document.getElementById('u-month').value = ym;
+loadSites();
+</script>
+</body>
+</html>
