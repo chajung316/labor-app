@@ -69,18 +69,12 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 .admin-lock p { font-size: 14px; color: #666; margin-bottom: 1rem; }
 .search-box { display: flex; gap: 8px; margin-bottom: 1rem; }
 .search-box input { flex: 1; }
-.search-box button { padding: 10px 16px; border: 1px solid #185FA5; border-radius: 8px; background: #185FA5; color: #fff; font-size: 14px; cursor: pointer; white-space: nowrap; }
 .history-card { background: #f9f9f9; border-radius: 8px; padding: 12px; margin-bottom: 8px; }
 .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
 .history-month { font-size: 13px; font-weight: 600; color: #185FA5; }
 .history-site { font-size: 12px; color: #999; }
 .history-stats { display: flex; gap: 16px; font-size: 13px; }
-.stat-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.stat-table th { background: #185FA5; color: #fff; padding: 8px; text-align: center; }
-.stat-table td { padding: 8px; text-align: center; border-bottom: 1px solid #eee; }
-.stat-table tr:last-child td { border-bottom: none; }
-.stat-table td.job-name { text-align: left; font-weight: 500; }
-.day-stat-table { width: 100%; border-collapse: collapse; font-size: 12px; overflow-x: auto; }
+.day-stat-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .day-stat-table th { background: #f0f0f0; padding: 5px; text-align: center; border: 1px solid #ddd; white-space: nowrap; }
 .day-stat-table td { padding: 5px; text-align: center; border: 1px solid #eee; }
 .day-stat-table td.job-col { text-align: left; font-weight: 500; white-space: nowrap; background: #fafafa; }
@@ -105,8 +99,8 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
       <div class="card-title">본인 공수 조회</div>
       <label>이름</label>
       <input type="text" id="w-name" placeholder="홍길동">
-      <label>비밀번호</label>
-      <input type="password" id="w-pass" placeholder="비밀번호 입력">
+      <label>핸드폰번호 (숫자만)</label>
+      <input type="tel" id="w-phone" placeholder="01012345678">
       <label>현장 선택</label>
       <select id="w-site"><option value="">-- 현장 선택 --</option></select>
       <label>조회 월</label>
@@ -144,7 +138,11 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
           <span class="card-title" style="margin:0;">엑셀 파일 업로드</span>
           <button class="lock-btn" onclick="adminLock()">🔒 잠금</button>
         </div>
-        <div class="info-box">A=번호 | B=직종 | C=성명 | D=비번<br>E~S=1~15일(윗줄) / E~T=16~31일(아랫줄)<br>U=공수합계 | V=일수합계 (1~3행 헤더)</div>
+        <div class="info-box">
+          엑셀 구조 (1~3행 헤더, 4행부터 데이터):<br>
+          <strong>윗줄: A=번호 | B=직종 | C=성명 | E~S=1~15일</strong><br>
+          <strong>아랫줄: D=핸드폰번호 | E~T=16~31일 | U=공수 | V=일수</strong>
+        </div>
         <label>현장명</label>
         <input type="text" id="u-site" placeholder="신안산선 매화역 #1번 현장">
         <label>년월</label>
@@ -265,6 +263,9 @@ const ADMIN_KEY = 'admin_password';
 
 function getAdminPass() { return localStorage.getItem(ADMIN_KEY) || '0000'; }
 function setAdminPass(p) { localStorage.setItem(ADMIN_KEY, p); }
+
+// 전화번호 정규화 (하이픈 제거, 숫자만)
+function normalizePhone(p) { return String(p || '').replace(/[^0-9]/g, ''); }
 
 async function db(method, table, body, params) {
   let url = `${SUPA_URL}/rest/v1/${table}`;
@@ -404,13 +405,13 @@ async function deleteData() {
 
 async function workerLogin() {
   const name = document.getElementById('w-name').value.trim();
-  const pass = document.getElementById('w-pass').value.trim();
+  const phone = normalizePhone(document.getElementById('w-phone').value);
   const site = document.getElementById('w-site').value;
   const month = document.getElementById('w-month').value;
-  if (!name || !pass || !site || !month) return showMsg('w-msg','모두 입력해주세요','error');
+  if (!name || !phone || !site || !month) return showMsg('w-msg','모두 입력해주세요','error');
   try {
-    const workers = await db('GET', 'workers', null, `name=eq.${encodeURIComponent(name)}&password=eq.${encodeURIComponent(pass)}&select=id,name,job_type`);
-    if (!workers || workers.length === 0) return showMsg('w-msg','이름 또는 비밀번호가 틀렸어요','error');
+    const workers = await db('GET', 'workers', null, `name=eq.${encodeURIComponent(name)}&phone=eq.${phone}&select=id,name,job_type`);
+    if (!workers || workers.length === 0) return showMsg('w-msg','이름 또는 핸드폰번호가 틀렸어요','error');
     const worker = workers[0];
     const records = await db('GET', 'work_records', null, `worker_id=eq.${worker.id}&site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=daily_work,total_days,total_work,site_name`);
     if (!records || records.length === 0) return showMsg('w-msg','해당 월의 공수 기록이 없어요','error');
@@ -465,30 +466,42 @@ function previewExcel(input) {
 
 function parseWorkers(rows) {
   const workers = [];
-  let i = 3;
+  let i = 3; // 1~3행 헤더 스킵
   while (i < rows.length - 1) {
-    const topRow = rows[i], botRow = rows[i+1] || [];
+    const topRow = rows[i];
+    const botRow = rows[i+1] || [];
     const num = topRow[0];
     if (!num || isNaN(parseInt(num))) { i += 2; continue; }
+
     const job_type = String(topRow[1] || '').trim();
     const name = String(topRow[2] || '').trim();
-    const password = String(topRow[3] || '').trim();
-    if (!name || !password) { i += 2; continue; }
+    // 핸드폰번호: 아랫줄 D열 (botRow[3])
+    const phone = normalizePhone(botRow[3]);
+    if (!name) { i += 2; continue; }
+
     const daily_work = {};
     let total_work = 0, total_days = 0;
+
+    // 윗줄: 1~15일 → col 4~18 (E~S)
     for (let d = 1; d <= 15; d++) {
-      const val = parseFloat(topRow[3+d]) || 0;
+      const val = parseFloat(topRow[3 + d]) || 0;
       if (val > 0) { daily_work[String(d)] = val; total_work += val; total_days++; }
     }
+    // 아랫줄: 16~31일 → col 4~19 (E~T)
     for (let d = 16; d <= 31; d++) {
-      const val = parseFloat(botRow[4+(d-16)]) || 0;
+      const val = parseFloat(botRow[4 + (d - 16)]) || 0;
       if (val > 0) { daily_work[String(d)] = val; total_work += val; total_days++; }
     }
+
+    // U열(col 20)=공수합계, V열(col 21)=일수합계
     const excelWork = parseFloat(topRow[20]) || 0;
     const excelDays = parseFloat(topRow[21]) || 0;
-    workers.push({ num: parseInt(num), job_type, name, password, daily_work,
+
+    workers.push({
+      num: parseInt(num), job_type, name, phone, daily_work,
       total_work: excelWork > 0 ? excelWork : parseFloat(total_work.toFixed(2)),
-      total_days: excelDays > 0 ? excelDays : total_days });
+      total_days: excelDays > 0 ? excelDays : total_days
+    });
     i += 2;
   }
   return workers;
@@ -496,11 +509,11 @@ function parseWorkers(rows) {
 
 function showPreview(workers) {
   document.getElementById('u-count').textContent = workers.length;
-  let html = '<tr><th>번호</th><th>직종</th><th>성명</th><th>비번</th><th>일수</th><th>공수</th>';
+  let html = '<tr><th>번호</th><th>직종</th><th>성명</th><th>핸드폰</th><th>일수</th><th>공수</th>';
   for (let d = 1; d <= 31; d++) html += `<th>${d}</th>`;
   html += '</tr>';
   workers.forEach(w => {
-    html += `<tr><td>${w.num}</td><td>${w.job_type}</td><td>${w.name}</td><td>${w.password}</td><td>${w.total_days}</td><td>${w.total_work.toFixed(1)}</td>`;
+    html += `<tr><td>${w.num}</td><td>${w.job_type}</td><td>${w.name}</td><td>${w.phone}</td><td>${w.total_days}</td><td>${w.total_work.toFixed(1)}</td>`;
     for (let d = 1; d <= 31; d++) {
       const v = w.daily_work[String(d)];
       html += v ? `<td class="day-cell">${v}</td>` : '<td></td>';
@@ -525,13 +538,14 @@ async function uploadToSupabase() {
     const w = parsedWorkers[i];
     document.getElementById('u-bar').style.width = Math.round((i/parsedWorkers.length)*100) + '%';
     try {
+      // 이름으로 기존 작업자 찾기
       const existing = await db('GET', 'workers', null, `name=eq.${encodeURIComponent(w.name)}&select=id`);
       let worker_id;
       if (existing && existing.length > 0) {
         worker_id = existing[0].id;
-        await db('PATCH', `workers?id=eq.${worker_id}`, { password: w.password, job_type: w.job_type });
+        await db('PATCH', `workers?id=eq.${worker_id}`, { phone: w.phone, job_type: w.job_type });
       } else {
-        const created = await db('POST', 'workers', { name: w.name, password: w.password, job_type: w.job_type });
+        const created = await db('POST', 'workers', { name: w.name, phone: w.phone, job_type: w.job_type });
         worker_id = created[0].id;
       }
       const recExist = await db('GET', 'work_records', null, `worker_id=eq.${worker_id}&site_name=eq.${encodeURIComponent(site_name)}&year_month=eq.${year_month}&select=id`);
@@ -553,7 +567,7 @@ async function uploadToSupabase() {
 async function loadList() {
   const body = document.getElementById('list-body');
   try {
-    const workers = await db('GET', 'workers', null, 'select=id,name,job_type&order=name');
+    const workers = await db('GET', 'workers', null, 'select=id,name,job_type,phone&order=name');
     const sites = await db('GET', 'work_records', null, 'select=site_name,year_month');
     allSites = [...new Set(sites.map(d => d.site_name))].sort();
     allMonths = [...new Set(sites.map(d => d.year_month))].sort().reverse();
@@ -576,7 +590,7 @@ function renderWorkerList(workers) {
       <div class="worker-row-header" onclick="toggleDetail('w${idx}')">
         <div>
           <div style="font-size:14px;font-weight:600;">${w.name}</div>
-          <div style="font-size:12px;color:#999;">${w.job_type || ''}</div>
+          <div style="font-size:12px;color:#999;">${w.job_type || ''} ${w.phone ? '· '+w.phone : ''}</div>
         </div>
         <span class="badge" id="badge-w${idx}">▼ 이력보기</span>
       </div>
@@ -649,7 +663,6 @@ async function loadWorkerDetail(workerId, idx) {
   } catch(e) { document.getElementById(`ddata-${idx}`).innerHTML = `<div style="color:#c62828;font-size:13px;">${e.message}</div>`; }
 }
 
-// 직종 통계
 async function loadStatSites() {
   try {
     const data = await db('GET', 'work_records', null, 'select=site_name');
@@ -679,21 +692,15 @@ async function loadStats() {
   if (!site || !month) { result.innerHTML = ''; return; }
   result.innerHTML = '<div style="font-size:13px;color:#999;">불러오는 중...</div>';
   try {
-    // 해당 현장+월의 work_records + workers(직종) 조인
     const records = await db('GET', 'work_records', null, `site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=daily_work,worker_id`);
     const workers = await db('GET', 'workers', null, 'select=id,name,job_type');
     const workerMap = {};
     workers.forEach(w => workerMap[w.id] = w);
-
     const [yr, mo] = month.split('-').map(Number);
     const daysInMonth = new Date(yr, mo, 0).getDate();
-
-    // 날짜별 직종별 인원 카운트
-    // dayStats[d][job] = count
     const dayStats = {};
     const jobSet = new Set();
     for (let d = 1; d <= daysInMonth; d++) dayStats[d] = {};
-
     records.forEach(rec => {
       const w = workerMap[rec.worker_id];
       const job = (w && w.job_type) ? w.job_type : '미분류';
@@ -706,19 +713,14 @@ async function loadStats() {
         }
       });
     });
-
     const jobs = [...jobSet].sort();
     if (jobs.length === 0) { result.innerHTML = '<div style="color:#999;font-size:13px;">데이터 없음</div>'; return; }
-
-    // 테이블 생성
     let html = '<div style="overflow-x:auto;"><table class="day-stat-table"><tr><th>직종</th>';
     for (let d = 1; d <= daysInMonth; d++) {
       const dow = new Date(yr, mo-1, d).getDay();
-      const style = dow===0 ? 'color:#c62828' : dow===6 ? 'color:#1565c0' : '';
-      html += `<th style="${style}">${d}</th>`;
+      html += `<th style="${dow===0?'color:#c62828':dow===6?'color:#1565c0':''}">${d}</th>`;
     }
     html += '<th>합계</th></tr>';
-
     jobs.forEach(job => {
       html += `<tr><td class="job-col">${job}</td>`;
       let total = 0;
@@ -729,8 +731,6 @@ async function loadStats() {
       }
       html += `<td style="font-weight:600;color:#185FA5;">${total}</td></tr>`;
     });
-
-    // 합계 행
     html += '<tr style="background:#f0f0f0;font-weight:600;"><td class="job-col">합계</td>';
     let grandTotal = 0;
     for (let d = 1; d <= daysInMonth; d++) {
@@ -738,9 +738,7 @@ async function loadStats() {
       grandTotal += total;
       html += total > 0 ? `<td style="color:#1a1a1a;">${total}</td>` : '<td></td>';
     }
-    html += `<td style="color:#185FA5;">${grandTotal}</td></tr>`;
-    html += '</table></div>';
-
+    html += `<td style="color:#185FA5;">${grandTotal}</td></tr></table></div>`;
     result.innerHTML = `<div style="font-size:13px;color:#666;margin-bottom:8px;">${site} · ${month} 직종별 일별 인원</div>` + html;
   } catch(e) { result.innerHTML = `<div style="color:#c62828;font-size:13px;">${e.message}</div>`; }
 }
