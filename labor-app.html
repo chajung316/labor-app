@@ -29,6 +29,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 .day-table th { background: #f0f0f0; padding: 7px 4px; text-align: center; font-weight: 700; color: #555; border: 1px solid #e0e0e0; min-width: 26px; }
 .day-table td { padding: 7px 4px; text-align: center; border: 1px solid #e8e8e8; color: #333; }
 .day-table td.worked { background: #e3f2fd; color: #1565c0; font-weight: 700; }
+.day-table td.red-cell { background: #ffebee; color: #d32f2f; font-weight: 800; }
 .day-table td.row-label { font-weight: 700; color: #555; background: #fafafa; white-space: nowrap; padding: 7px 10px; }
 .day-table th.sun { color: #c62828; }
 .day-table th.sat { color: #1565c0; }
@@ -177,7 +178,7 @@ async function workerLogin() {
     const workers = await db('GET', 'workers', null, `name=eq.${encodeURIComponent(name)}&phone=eq.${phone}&select=id,name,job_type`);
     if (!workers || workers.length === 0) return showMsg('w-msg','이름 또는 핸드폰번호가 틀렸어요','error');
     const worker = workers[0];
-    const records = await db('GET', 'work_records', null, `worker_id=eq.${worker.id}&site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=daily_work,total_days,total_work,site_name`);
+    const records = await db('GET', 'work_records', null, `worker_id=eq.${worker.id}&site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=daily_work,total_days,total_work,site_name,red_days`);
     if (!records || records.length === 0) return showMsg('w-msg','해당 월의 공수 기록이 없어요','error');
     const rec = records[0];
     document.getElementById('w-msg').className = 'msg';
@@ -186,26 +187,31 @@ async function workerLogin() {
     document.getElementById('w-total-days').textContent = rec.total_days || 0;
     document.getElementById('w-total-work').textContent = parseFloat(rec.total_work || 0).toFixed(1);
     document.getElementById('w-site-label').textContent = `${rec.site_name} · ${month}`;
-    renderDayTable('w-daytable', rec.daily_work, month);
+    renderDayTable('w-daytable', rec.daily_work, month, rec.red_days);
     document.getElementById('w-result').style.display = 'block';
     document.getElementById('w-result').scrollIntoView({ behavior: 'smooth' });
   } catch(e) { showMsg('w-msg', e.message, 'error'); }
 }
 
-function renderDayTable(tableId, daily_work, month) {
+function renderDayTable(tableId, daily_work, month, red_days) {
   const [yr, mo] = month.split('-').map(Number);
   const daysInMonth = new Date(yr, mo, 0).getDate();
   const works = daily_work || {};
+  const reds = red_days || {};
   let header = '<tr><th>구분</th>';
   for (let d = 1; d <= daysInMonth; d++) {
-    const dow = new Date(yr, mo-1, d).getDay();
-    header += `<th${dow===0?' class="sun"':dow===6?' class="sat"':''}>${d}</th>`;
+    header += `<th>${d}</th>`;
   }
   header += '</tr>';
   let row = '<tr><td class="row-label">공수</td>';
   for (let d = 1; d <= daysInMonth; d++) {
     const v = works[String(d)];
-    row += v ? `<td class="worked">${v}</td>` : '<td></td>';
+    if (v) {
+      const cls = reds[String(d)] ? 'red-cell' : 'worked';
+      row += `<td class="${cls}">${v}</td>`;
+    } else {
+      row += '<td></td>';
+    }
   }
   document.getElementById(tableId).innerHTML = header + row + '</tr>';
 }
