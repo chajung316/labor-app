@@ -104,6 +104,8 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
       <input type="text" id="w-name" placeholder="홍길동">
       <label>핸드폰번호 (숫자만)</label>
       <input type="tel" id="w-phone" placeholder="01012345678">
+      <button class="btn" style="margin-top:0.75rem;" onclick="findMyRecords()">🔍 내 근무 이력 찾기</button>
+      <div id="w-history" style="display:none; margin-top:0.75rem;"></div>
       <label>현장 선택</label>
       <select id="w-site"><option value="">-- 현장 선택 --</option></select>
       <label>조회 월</label>
@@ -282,10 +284,20 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
         <label>현장 선택</label>
         <select id="ps-site" onchange="loadPaySlipMonths()"><option value="">-- 현장 선택 --</option></select>
         <label>월 선택</label>
-        <select id="ps-month"><option value="">-- 월 선택 --</option></select>
+        <select id="ps-month" onchange="loadPaySlipWorkers()"><option value="">-- 월 선택 --</option></select>
         <label>회사명 (편집 가능)</label>
         <input type="text" id="ps-company" placeholder="주식회사 네오시티" value="주식회사 네오시티">
-        <button class="btn primary" onclick="generatePaySlips()" id="ps-btn">📄 PDF 명세서 생성 (A4에 2명씩)</button>
+        <div id="ps-worker-wrap" style="display:none; margin-top:1rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span style="font-size:13px;font-weight:600;color:#666;">인원 선택 <span style="font-weight:400;color:#999;">(미선택시 전체)</span></span>
+            <div>
+              <button class="lock-btn" onclick="toggleAllChecks(true)">전체선택</button>
+              <button class="lock-btn" onclick="toggleAllChecks(false)">해제</button>
+            </div>
+          </div>
+          <div id="ps-worker-list" style="max-height:240px;overflow-y:auto;border:1px solid #eee;border-radius:8px;padding:8px;"></div>
+        </div>
+        <button class="btn primary" onclick="generatePaySlips()" id="ps-btn">📄 PDF 출역내역서 생성</button>
         <div id="ps-msg" class="msg"></div>
       </div>
     </div>
@@ -438,6 +450,55 @@ async function deleteData() {
     document.getElementById('m-month').innerHTML = '<option value="">-- 월 선택 --</option>';
     loadManageSites(); loadSites();
   } catch(e) { showMsg('m-msg', e.message, 'error'); }
+}
+
+async function findMyRecords() {
+  const name = document.getElementById('w-name').value.trim();
+  const phone = normalizePhone(document.getElementById('w-phone').value);
+  const histDiv = document.getElementById('w-history');
+  if (!name || !phone) return showMsg('w-msg','이름과 핸드폰번호를 입력해주세요','error');
+  document.getElementById('w-msg').className = 'msg';
+  histDiv.style.display = 'block';
+  histDiv.innerHTML = '<div style="font-size:13px;color:#999;padding:8px;">찾는 중...</div>';
+  try {
+    const workers = await db('GET', 'workers', null, `name=eq.${encodeURIComponent(name)}&phone=eq.${phone}&select=id,name`);
+    if (!workers || workers.length === 0) {
+      histDiv.innerHTML = '<div style="font-size:13px;color:#c62828;padding:8px;background:#fdecea;border-radius:8px;">이름 또는 핸드폰번호가 일치하지 않아요</div>';
+      return;
+    }
+    const worker = workers[0];
+    const records = await db('GET', 'work_records', null, `worker_id=eq.${worker.id}&select=site_name,year_month,total_work,total_days&order=year_month.desc`);
+    if (!records || records.length === 0) {
+      histDiv.innerHTML = '<div style="font-size:13px;color:#999;padding:8px;">근무 기록이 없어요</div>';
+      return;
+    }
+    histDiv.innerHTML = `
+      <div style="font-size:13px;font-weight:600;color:#555;margin-bottom:6px;">📋 ${worker.name}님 근무 이력 (클릭하면 자동선택)</div>
+      ${records.map(r => `
+        <div onclick="selectRecord('${r.site_name.replace(/'/g,"\\'")}','${r.year_month}')" style="cursor:pointer;background:#f9f9f9;border-radius:8px;padding:10px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;border:1px solid #eee;">
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#185FA5;">${r.year_month}</div>
+            <div style="font-size:12px;color:#999;">${r.site_name}</div>
+          </div>
+          <div style="font-size:13px;text-align:right;">
+            <span style="color:#888;">공수</span> <strong style="color:#185FA5;">${parseFloat(r.total_work).toFixed(1)}</strong>
+          </div>
+        </div>`).join('')}`;
+  } catch(e) {
+    histDiv.innerHTML = `<div style="font-size:13px;color:#c62828;padding:8px;">오류: ${e.message}</div>`;
+  }
+}
+
+async function selectRecord(site, month) {
+  // 현장 셀렉트에 옵션 없으면 추가
+  const siteSel = document.getElementById('w-site');
+  if (![...siteSel.options].some(o => o.value === site)) {
+    siteSel.innerHTML += `<option value="${site}">${site}</option>`;
+  }
+  siteSel.value = site;
+  document.getElementById('w-month').value = month;
+  // 바로 조회
+  workerLogin();
 }
 
 async function workerLogin() {
@@ -832,6 +893,33 @@ async function loadPaySlipMonths() {
   } catch(e) {}
 }
 
+async function loadPaySlipWorkers() {
+  const site = document.getElementById('ps-site').value;
+  const month = document.getElementById('ps-month').value;
+  const wrap = document.getElementById('ps-worker-wrap');
+  const listDiv = document.getElementById('ps-worker-list');
+  if (!site || !month) { wrap.style.display = 'none'; return; }
+  try {
+    const records = await db('GET', 'work_records', null, `site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=worker_id,total_work`);
+    const workers = await db('GET', 'workers', null, 'select=id,name,job_type');
+    const wMap = {}; workers.forEach(w => wMap[w.id] = w);
+    const list = records.map(r => ({ id: r.worker_id, work: r.total_work, w: wMap[r.worker_id] || {name:'?',job_type:''} }))
+      .sort((a,b) => (a.w.name||'').localeCompare(b.w.name||''));
+    if (list.length === 0) { wrap.style.display = 'none'; return; }
+    listDiv.innerHTML = list.map(it => `
+      <label style="display:flex;align-items:center;gap:8px;padding:6px 4px;font-size:14px;cursor:pointer;border-bottom:1px solid #f5f5f5;">
+        <input type="checkbox" class="ps-check" value="${it.id}" style="width:auto;">
+        <span style="flex:1;">${it.w.name} <span style="color:#999;font-size:12px;">${it.w.job_type||''}</span></span>
+        <span style="color:#185FA5;font-size:13px;">${parseFloat(it.work).toFixed(1)}공수</span>
+      </label>`).join('');
+    wrap.style.display = 'block';
+  } catch(e) { wrap.style.display = 'none'; }
+}
+
+function toggleAllChecks(checked) {
+  document.querySelectorAll('.ps-check').forEach(c => c.checked = checked);
+}
+
 function monthLabel(ym) {
   const [y, m] = ym.split('-');
   return `${parseInt(m)}월`;
@@ -845,7 +933,6 @@ function buildPaySlipHTML(worker, rec, month, company) {
   const periodStart = `${yr}-${String(mo).padStart(2,'0')}-01`;
   const periodEnd = `${yr}-${String(mo).padStart(2,'0')}-${lastDay}`;
 
-  // 1~15일, 16~말일 두 줄
   function dayCells(start, end) {
     let numRow = '', valRow = '';
     for (let d = start; d <= end; d++) {
@@ -855,7 +942,6 @@ function buildPaySlipHTML(worker, rec, month, company) {
       const v = works[String(d)];
       valRow += `<td>${v ? v.toFixed(2) : ''}</td>`;
     }
-    // 빈 칸 채우기 (15칸 맞춤)
     const cols = end - start + 1;
     for (let k = cols; k < 16; k++) { numRow += '<td style="background:#e0e0e0;"></td>'; valRow += '<td style="background:#e0e0e0;"></td>'; }
     return { numRow, valRow };
@@ -866,7 +952,7 @@ function buildPaySlipHTML(worker, rec, month, company) {
   return `
   <div class="payslip">
     <table class="ps-table">
-      <tr><td colspan="16" class="ps-title">급 여 명 세 서 (${monthLabel(month)})</td></tr>
+      <tr><td colspan="16" class="ps-title">출 역 내 역 서 (${monthLabel(month)})</td></tr>
       <tr>
         <td colspan="3" class="ps-label">성 명</td>
         <td colspan="5" class="ps-value">${worker.name}</td>
@@ -883,12 +969,12 @@ function buildPaySlipHTML(worker, rec, month, company) {
       <tr class="ps-daynum">${bot.numRow}</tr>
       <tr class="ps-dayval">${bot.valRow}</tr>
       <tr>
-        <td colspan="8" class="ps-foot-left">${company}</td>
-        <td colspan="8" class="ps-foot-right">귀하의 노고에 감사드립니다.</td>
-      </tr>
-      <tr>
         <td colspan="4" class="ps-total-label">총 공수</td>
         <td colspan="12" class="ps-total-val">${parseFloat(rec.total_work).toFixed(1)}</td>
+      </tr>
+      <tr>
+        <td colspan="8" class="ps-foot-left">${company}</td>
+        <td colspan="8" class="ps-foot-right">귀하의 노고에 감사드립니다.</td>
       </tr>
     </table>
   </div>`;
@@ -909,49 +995,57 @@ async function generatePaySlips() {
     const workers = await db('GET', 'workers', null, 'select=id,name,job_type');
     const wMap = {}; workers.forEach(w => wMap[w.id] = w);
 
-    // 이름순 정렬
-    const list = records.map(r => ({ rec: r, worker: wMap[r.worker_id] || {name:'?', job_type:''} }))
+    let list = records.map(r => ({ rec: r, worker: wMap[r.worker_id] || {name:'?', job_type:''} }))
       .sort((a,b) => (a.worker.name||'').localeCompare(b.worker.name||''));
 
-    if (list.length === 0) { showMsg('ps-msg','데이터가 없어요','error'); btn.innerHTML='📄 PDF 명세서 생성 (A4에 2명씩)'; btn.disabled=false; return; }
+    // 선택된 인원만 필터 (체크박스)
+    const selectedIds = Array.from(document.querySelectorAll('.ps-check:checked')).map(c => c.value);
+    if (selectedIds.length > 0) {
+      list = list.filter(item => selectedIds.includes(String(item.rec.worker_id)));
+    }
+
+    if (list.length === 0) { showMsg('ps-msg','데이터가 없어요','error'); btn.innerHTML='📄 PDF 출역내역서 생성'; btn.disabled=false; return; }
 
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF('p', 'mm', 'a4');
-    const pageW = 210, pageH = 297, margin = 10;
+    const pageW = 210, pageH = 297, margin = 12;
+    const halfH = (pageH - margin*2) / 2; // A4 절반 높이
 
-    // 2명씩 페이지 구성
     for (let i = 0; i < list.length; i += 2) {
-      const pair = list.slice(i, i+2);
-      // 임시 렌더 컨테이너
-      const holder = document.createElement('div');
-      holder.style.cssText = 'position:absolute;left:-9999px;top:0;width:740px;background:#fff;padding:0;';
-      holder.innerHTML = `<div style="font-family:sans-serif;">
-        ${buildPaySlipHTML(pair[0].worker, pair[0].rec, month, company)}
-        ${pair[1] ? '<div style="height:30px;"></div>' + buildPaySlipHTML(pair[1].worker, pair[1].rec, month, company) : ''}
-      </div>` + getPaySlipStyle();
-      document.body.appendChild(holder);
-
-      const canvas = await html2canvas(holder, { scale: 2, backgroundColor: '#fff' });
-      document.body.removeChild(holder);
-
-      const imgData = canvas.toDataURL('image/jpeg', 0.92);
-      const imgW = pageW - margin*2;
-      const imgH = canvas.height * imgW / canvas.width;
-
       if (i > 0) pdf.addPage();
-      pdf.addImage(imgData, 'JPEG', margin, margin, imgW, Math.min(imgH, pageH - margin*2));
-
+      // 위쪽 1명
+      const item1 = list[i];
+      await renderToHalf(pdf, item1, month, company, margin, margin, pageW - margin*2, halfH - 4);
+      // 아래쪽 1명
+      if (list[i+1]) {
+        await renderToHalf(pdf, list[i+1], month, company, margin, margin + halfH + 4, pageW - margin*2, halfH - 4);
+      }
       btn.innerHTML = `<span class="spinner"></span>${Math.min(i+2, list.length)}/${list.length}명...`;
     }
 
-    pdf.save(`급여명세서_${site}_${month}.pdf`);
-    showMsg('ps-msg', `${list.length}명 명세서 생성 완료!`, 'success');
+    pdf.save(`출역내역서_${site}_${month}.pdf`);
+    showMsg('ps-msg', `${list.length}명 출역내역서 생성 완료!`, 'success');
   } catch(e) {
     console.error(e);
     showMsg('ps-msg', '오류: ' + e.message, 'error');
   }
-  btn.innerHTML = '📄 PDF 명세서 생성 (A4에 2명씩)';
+  btn.innerHTML = '📄 PDF 출역내역서 생성';
   btn.disabled = false;
+}
+
+async function renderToHalf(pdf, item, month, company, x, y, w, maxH) {
+  const holder = document.createElement('div');
+  holder.style.cssText = 'position:absolute;left:-9999px;top:0;width:740px;background:#fff;';
+  holder.innerHTML = `<div style="font-family:sans-serif;">${buildPaySlipHTML(item.worker, item.rec, month, company)}</div>` + getPaySlipStyle();
+  document.body.appendChild(holder);
+  const canvas = await html2canvas(holder, { scale: 2, backgroundColor: '#fff' });
+  document.body.removeChild(holder);
+  const imgData = canvas.toDataURL('image/jpeg', 0.92);
+  let imgH = canvas.height * w / canvas.width;
+  let imgW = w;
+  // 절반 높이 초과시 높이에 맞춤
+  if (imgH > maxH) { imgH = maxH; imgW = canvas.width * maxH / canvas.height; }
+  pdf.addImage(imgData, 'JPEG', x, y, imgW, imgH);
 }
 
 function getPaySlipStyle() {
