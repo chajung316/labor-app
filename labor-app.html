@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>노무비 공수 조회</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #222; }
@@ -91,6 +93,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
     <div class="tab" onclick="showTab('manage')">관리</div>
     <div class="tab" onclick="showTab('list')">인원목록</div>
     <div class="tab" onclick="showTab('stats')">직종통계</div>
+    <div class="tab" onclick="showTab('payslip')">명세서</div>
   </div>
 
   <!-- 작업자 조회 -->
@@ -143,6 +146,8 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
           <strong>윗줄: A=번호 | B=직종 | C=성명 | E~S=1~15일</strong><br>
           <strong>아랫줄: D=핸드폰번호 | E~T=16~31일 | U=공수 | V=일수</strong>
         </div>
+        <label>회사명</label>
+        <input type="text" id="u-company" placeholder="주식회사 네오시티">
         <label>현장명</label>
         <input type="text" id="u-site" placeholder="신안산선 매화역 #1번 현장">
         <label>년월</label>
@@ -258,6 +263,33 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
       </div>
     </div>
   </div>
+
+  <!-- 명세서 출력 -->
+  <div id="screen-payslip" class="screen">
+    <div id="payslip-lock" class="admin-lock">
+      <div class="lock-icon">🔒</div>
+      <p>관리자 전용 메뉴입니다</p>
+      <input type="password" id="apay-pass" placeholder="관리자 비밀번호" style="margin-bottom:0;">
+      <button class="btn primary" onclick="adminUnlock('payslip')">확인</button>
+      <div id="apay-msg" class="msg"></div>
+    </div>
+    <div id="payslip-content" style="display:none;">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+          <span class="card-title" style="margin:0;">급여명세서 출력</span>
+          <button class="lock-btn" onclick="adminLock()">🔒 잠금</button>
+        </div>
+        <label>현장 선택</label>
+        <select id="ps-site" onchange="loadPaySlipMonths()"><option value="">-- 현장 선택 --</option></select>
+        <label>월 선택</label>
+        <select id="ps-month"><option value="">-- 월 선택 --</option></select>
+        <label>회사명 (편집 가능)</label>
+        <input type="text" id="ps-company" placeholder="주식회사 네오시티" value="주식회사 네오시티">
+        <button class="btn primary" onclick="generatePaySlips()" id="ps-btn">📄 PDF 명세서 생성 (A4에 2명씩)</button>
+        <div id="ps-msg" class="msg"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -296,8 +328,8 @@ function showMsg(id, text, type) {
 }
 
 function adminUnlock(tab) {
-  const passMap = { upload:'al-pass', manage:'am-pass', list:'alist-pass', stats:'astats-pass' };
-  const msgMap  = { upload:'al-msg',  manage:'am-msg',  list:'alist-msg',  stats:'astats-msg' };
+  const passMap = { upload:'al-pass', manage:'am-pass', list:'alist-pass', stats:'astats-pass', payslip:'apay-pass' };
+  const msgMap  = { upload:'al-msg',  manage:'am-msg',  list:'alist-msg',  stats:'astats-msg', payslip:'apay-msg' };
   const input = document.getElementById(passMap[tab]);
   if (input.value !== getAdminPass()) {
     showMsg(msgMap[tab], '비밀번호가 틀렸어요', 'error');
@@ -309,10 +341,11 @@ function adminUnlock(tab) {
   if (tab === 'manage') loadManageSites();
   if (tab === 'list') loadList();
   if (tab === 'stats') loadStatSites();
+  if (tab === 'payslip') loadPaySlipSites();
 }
 
 function adminLock() {
-  ['upload','manage','list','stats'].forEach(tab => {
+  ['upload','manage','list','stats','payslip'].forEach(tab => {
     const lock = document.getElementById(`${tab}-lock`);
     const content = document.getElementById(`${tab}-content`);
     if (lock) lock.style.display = 'block';
@@ -335,7 +368,7 @@ function changePassword() {
 }
 
 function showTab(tab) {
-  ['worker','upload','manage','list','stats'].forEach((t,i) => {
+  ['worker','upload','manage','list','stats','payslip'].forEach((t,i) => {
     document.querySelectorAll('.tab')[i].classList.toggle('active', t === tab);
     document.getElementById('screen-' + t).classList.toggle('active', t === tab);
   });
@@ -555,6 +588,7 @@ function showPreview(workers) {
 async function uploadToSupabase() {
   const site_name = document.getElementById('u-site').value.trim();
   const year_month = document.getElementById('u-month').value;
+  const company_name = document.getElementById('u-company').value.trim() || '주식회사 네오시티';
   if (!site_name || !year_month) return showMsg('u-msg','현장명과 년월을 입력해주세요','error');
   if (parsedWorkers.length === 0) return showMsg('u-msg','엑셀 파일을 먼저 선택해주세요','error');
   const btn = document.getElementById('u-btn');
@@ -577,7 +611,7 @@ async function uploadToSupabase() {
         worker_id = created[0].id;
       }
       const recExist = await db('GET', 'work_records', null, `worker_id=eq.${worker_id}&site_name=eq.${encodeURIComponent(site_name)}&year_month=eq.${year_month}&select=id`);
-      const payload = { worker_id, site_name, year_month, daily_work: w.daily_work, total_days: w.total_days, total_work: w.total_work };
+      const payload = { worker_id, site_name, year_month, company_name, daily_work: w.daily_work, total_days: w.total_days, total_work: w.total_work };
       if (recExist && recExist.length > 0) {
         await db('PATCH', `work_records?id=eq.${recExist[0].id}`, payload);
       } else {
@@ -769,6 +803,173 @@ async function loadStats() {
     html += `<td style="color:#185FA5;">${grandTotal}</td></tr></table></div>`;
     result.innerHTML = `<div style="font-size:13px;color:#666;margin-bottom:8px;">${site} · ${month} 직종별 일별 인원</div>` + html;
   } catch(e) { result.innerHTML = `<div style="color:#c62828;font-size:13px;">${e.message}</div>`; }
+}
+
+
+// ===== 급여명세서 PDF =====
+async function loadPaySlipSites() {
+  try {
+    const data = await db('GET', 'work_records', null, 'select=site_name');
+    const sites = [...new Set(data.map(d => d.site_name))].sort();
+    const sel = document.getElementById('ps-site');
+    sel.innerHTML = '<option value="">-- 현장 선택 --</option>';
+    sites.forEach(s => sel.innerHTML += `<option value="${s}">${s}</option>`);
+  } catch(e) {}
+}
+
+async function loadPaySlipMonths() {
+  const site = document.getElementById('ps-site').value;
+  const sel = document.getElementById('ps-month');
+  sel.innerHTML = '<option value="">-- 월 선택 --</option>';
+  if (!site) return;
+  try {
+    const data = await db('GET', 'work_records', null, `site_name=eq.${encodeURIComponent(site)}&select=year_month,company_name`);
+    [...new Set(data.map(d => d.year_month))].sort().forEach(m => sel.innerHTML += `<option value="${m}">${m}</option>`);
+    // 회사명 자동 채우기
+    if (data.length > 0 && data[0].company_name) {
+      document.getElementById('ps-company').value = data[0].company_name;
+    }
+  } catch(e) {}
+}
+
+function monthLabel(ym) {
+  const [y, m] = ym.split('-');
+  return `${parseInt(m)}월`;
+}
+
+function buildPaySlipHTML(worker, rec, month, company) {
+  const [yr, mo] = month.split('-').map(Number);
+  const daysInMonth = new Date(yr, mo, 0).getDate();
+  const works = rec.daily_work || {};
+  const lastDay = String(daysInMonth).padStart(2,'0');
+  const periodStart = `${yr}-${String(mo).padStart(2,'0')}-01`;
+  const periodEnd = `${yr}-${String(mo).padStart(2,'0')}-${lastDay}`;
+
+  // 1~15일, 16~말일 두 줄
+  function dayCells(start, end) {
+    let numRow = '', valRow = '';
+    for (let d = start; d <= end; d++) {
+      const dow = new Date(yr, mo-1, d).getDay();
+      const color = dow === 0 ? 'color:#d32f2f;' : '';
+      numRow += `<td style="${color}">${d}</td>`;
+      const v = works[String(d)];
+      valRow += `<td>${v ? v.toFixed(2) : ''}</td>`;
+    }
+    // 빈 칸 채우기 (15칸 맞춤)
+    const cols = end - start + 1;
+    for (let k = cols; k < 16; k++) { numRow += '<td style="background:#e0e0e0;"></td>'; valRow += '<td style="background:#e0e0e0;"></td>'; }
+    return { numRow, valRow };
+  }
+  const top = dayCells(1, 15);
+  const bot = dayCells(16, daysInMonth);
+
+  return `
+  <div class="payslip">
+    <table class="ps-table">
+      <tr><td colspan="16" class="ps-title">급 여 명 세 서 (${monthLabel(month)})</td></tr>
+      <tr>
+        <td colspan="3" class="ps-label">성 명</td>
+        <td colspan="5" class="ps-value">${worker.name}</td>
+        <td colspan="3" class="ps-label">팀명, 직위</td>
+        <td colspan="5" class="ps-value">${worker.job_type || ''}</td>
+      </tr>
+      <tr>
+        <td colspan="4" class="ps-label">공사명 (현장명)</td>
+        <td colspan="12" class="ps-value">${rec.site_name}</td>
+      </tr>
+      <tr><td colspan="16" class="ps-subtitle">일 별 근 로 내 역 (${periodStart} ~ ${periodEnd})</td></tr>
+      <tr class="ps-daynum">${top.numRow}</tr>
+      <tr class="ps-dayval">${top.valRow}</tr>
+      <tr class="ps-daynum">${bot.numRow}</tr>
+      <tr class="ps-dayval">${bot.valRow}</tr>
+      <tr>
+        <td colspan="8" class="ps-foot-left">${company}</td>
+        <td colspan="8" class="ps-foot-right">귀하의 노고에 감사드립니다.</td>
+      </tr>
+      <tr>
+        <td colspan="4" class="ps-total-label">총 공수</td>
+        <td colspan="12" class="ps-total-val">${parseFloat(rec.total_work).toFixed(1)}</td>
+      </tr>
+    </table>
+  </div>`;
+}
+
+async function generatePaySlips() {
+  const site = document.getElementById('ps-site').value;
+  const month = document.getElementById('ps-month').value;
+  const company = document.getElementById('ps-company').value.trim() || '주식회사 네오시티';
+  if (!site || !month) return showMsg('ps-msg', '현장과 월을 선택해주세요', 'error');
+
+  const btn = document.getElementById('ps-btn');
+  btn.innerHTML = '<span class="spinner"></span>명세서 생성 중...';
+  btn.disabled = true;
+
+  try {
+    const records = await db('GET', 'work_records', null, `site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=worker_id,daily_work,total_work,total_days,site_name`);
+    const workers = await db('GET', 'workers', null, 'select=id,name,job_type');
+    const wMap = {}; workers.forEach(w => wMap[w.id] = w);
+
+    // 이름순 정렬
+    const list = records.map(r => ({ rec: r, worker: wMap[r.worker_id] || {name:'?', job_type:''} }))
+      .sort((a,b) => (a.worker.name||'').localeCompare(b.worker.name||''));
+
+    if (list.length === 0) { showMsg('ps-msg','데이터가 없어요','error'); btn.innerHTML='📄 PDF 명세서 생성 (A4에 2명씩)'; btn.disabled=false; return; }
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageW = 210, pageH = 297, margin = 10;
+
+    // 2명씩 페이지 구성
+    for (let i = 0; i < list.length; i += 2) {
+      const pair = list.slice(i, i+2);
+      // 임시 렌더 컨테이너
+      const holder = document.createElement('div');
+      holder.style.cssText = 'position:absolute;left:-9999px;top:0;width:740px;background:#fff;padding:0;';
+      holder.innerHTML = `<div style="font-family:sans-serif;">
+        ${buildPaySlipHTML(pair[0].worker, pair[0].rec, month, company)}
+        ${pair[1] ? '<div style="height:30px;"></div>' + buildPaySlipHTML(pair[1].worker, pair[1].rec, month, company) : ''}
+      </div>` + getPaySlipStyle();
+      document.body.appendChild(holder);
+
+      const canvas = await html2canvas(holder, { scale: 2, backgroundColor: '#fff' });
+      document.body.removeChild(holder);
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      const imgW = pageW - margin*2;
+      const imgH = canvas.height * imgW / canvas.width;
+
+      if (i > 0) pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', margin, margin, imgW, Math.min(imgH, pageH - margin*2));
+
+      btn.innerHTML = `<span class="spinner"></span>${Math.min(i+2, list.length)}/${list.length}명...`;
+    }
+
+    pdf.save(`급여명세서_${site}_${month}.pdf`);
+    showMsg('ps-msg', `${list.length}명 명세서 생성 완료!`, 'success');
+  } catch(e) {
+    console.error(e);
+    showMsg('ps-msg', '오류: ' + e.message, 'error');
+  }
+  btn.innerHTML = '📄 PDF 명세서 생성 (A4에 2명씩)';
+  btn.disabled = false;
+}
+
+function getPaySlipStyle() {
+  return `<style>
+    .payslip { margin-bottom: 0; }
+    .ps-table { width: 100%; border-collapse: collapse; border: 2px solid #333; font-family: 'Malgun Gothic', sans-serif; }
+    .ps-table td { border: 1px solid #666; padding: 8px 4px; text-align: center; font-size: 15px; }
+    .ps-title { font-size: 22px; font-weight: bold; letter-spacing: 4px; background: #f5f5f5; padding: 14px; }
+    .ps-subtitle { font-size: 17px; font-weight: bold; letter-spacing: 2px; background: #f5f5f5; padding: 10px; }
+    .ps-label { background: #f5f5f5; font-weight: bold; font-size: 15px; }
+    .ps-value { font-size: 17px; font-weight: 600; }
+    .ps-daynum td { font-size: 14px; font-weight: 600; background: #fafafa; height: 28px; }
+    .ps-dayval td { font-size: 13px; height: 32px; }
+    .ps-foot-left { text-align: left !important; padding-left: 12px !important; font-size: 15px; font-weight: 600; }
+    .ps-foot-right { text-align: right !important; padding-right: 12px !important; font-size: 15px; }
+    .ps-total-label { background: #fff59d; font-weight: bold; font-size: 16px; }
+    .ps-total-val { background: #fff59d; font-weight: bold; font-size: 18px; text-align: left !important; padding-left: 12px !important; }
+  </style>`;
 }
 
 const now = new Date();
