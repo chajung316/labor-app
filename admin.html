@@ -365,8 +365,14 @@ function adminUnlock(tab) {
     showMsg(msgMap[tab], '비밀번호가 틀렸어요', 'error');
     input.value = ''; return;
   }
-  document.getElementById(`${tab}-lock`).style.display = 'none';
-  document.getElementById(`${tab}-content`).style.display = 'block';
+  // 한 번 풀면 모든 탭 해제
+  window._adminUnlocked = true;
+  ['upload','manage','list','stats','payslip'].forEach(t => {
+    const lk = document.getElementById(`${t}-lock`);
+    const ct = document.getElementById(`${t}-content`);
+    if (lk) lk.style.display = 'none';
+    if (ct) ct.style.display = 'block';
+  });
   input.value = '';
   if (tab === 'manage') loadManageSites();
   if (tab === 'list') loadList();
@@ -403,6 +409,17 @@ function showTab(tab) {
     document.getElementById('screen-' + t).classList.toggle('active', t === tab);
   });
   if (tab === 'worker') loadSites();
+  // 이미 잠금 해제됐으면 해당 탭도 바로 열기
+  if (window._adminUnlocked) {
+    const lk = document.getElementById(`${tab}-lock`);
+    const ct = document.getElementById(`${tab}-content`);
+    if (lk) lk.style.display = 'none';
+    if (ct) ct.style.display = 'block';
+    if (tab === 'manage') loadManageSites();
+    if (tab === 'list') loadList();
+    if (tab === 'stats') loadStatSites();
+    if (tab === 'payslip') loadPaySlipSites();
+  }
 }
 
 async function loadSites() {
@@ -542,15 +559,15 @@ async function loadEditTable() {
   if (!site || !month) { result.innerHTML = ''; return; }
   result.innerHTML = '<div style="font-size:13px;color:#999;">불러오는 중...</div>';
   try {
-    const records = await db('GET', 'work_records', null, `site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=id,worker_id,daily_work,total_days,total_work,red_days`);
+    const records = await db('GET', 'work_records', null, `site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=id,worker_id,daily_work,total_days,total_work,red_days,seq_no`);
     const workers = await db('GET', 'workers', null, 'select=id,name,job_type');
     const wMap = {}; workers.forEach(w => wMap[w.id] = w);
     const list = records.map(r => ({ ...r, worker: wMap[r.worker_id] || {name:'?',job_type:''} }))
-      .sort((a,b) => (a.worker.name||'').localeCompare(b.worker.name||''));
+      .sort((a,b) => (a.seq_no||9999) - (b.seq_no||9999));  // 번호순(엑셀 올린 순서)
     if (list.length === 0) { result.innerHTML = '<div style="color:#999;font-size:13px;">데이터 없음</div>'; return; }
 
     editData = { site, month, list: list.map(r => ({
-      id: r.id, name: r.worker.name, job: r.worker.job_type,
+      id: r.id, seq: r.seq_no || 0, name: r.worker.name, job: r.worker.job_type,
       daily_work: {...(r.daily_work||{})}, red_days: {...(r.red_days||{})}
     })) };
 
@@ -570,16 +587,20 @@ function renderEditTable() {
   const daysInMonth = new Date(yr, mo, 0).getDate();
 
   let html = `<div style="font-size:12px;color:#e65100;background:#fff3e0;padding:8px 10px;border-radius:8px;margin-bottom:8px;line-height:1.6;">
-    💡 공수 칸을 <strong>고쳐 쓰면 수정</strong>, 칸을 <strong>한 번 탭(모바일)/우클릭</strong>하면 빨간색 표시돼요.<br>
-    수정 후 <strong>저장</strong> 버튼을 꼭 눌러주세요!
+    💡 공수 칸을 <strong>고쳐 쓰면 수정</strong>, 칸을 <strong>우클릭/길게 누르면</strong> 빨간색 표시.<br>
+    왼쪽 <strong>체크박스</strong>로 선택하면 아래에 선택 합계가 나와요. 수정 후 <strong>저장</strong> 필수!
   </div>`;
-  html += '<div style="overflow-x:auto;"><table class="edit-table"><tr><th class="sticky-col">성명</th><th>직종</th>';
+  html += '<div style="overflow-x:auto;"><table class="edit-table"><tr><th class="sticky-col">✓</th><th>번호</th><th>성명</th><th>직종</th>';
   for (let d = 1; d <= daysInMonth; d++) html += `<th>${d}</th>`;
   html += '<th>일수</th><th>공수</th></tr>';
 
   list.forEach((p, pi) => {
     const t = calcTotals(p.daily_work);
-    html += `<tr><td class="sticky-col" style="font-weight:600;">${p.name}</td><td style="font-size:11px;color:#888;">${p.job||''}</td>`;
+    html += `<tr>
+      <td class="sticky-col"><input type="checkbox" class="ed-check" data-pi="${pi}" onchange="updateSelSum()" style="width:auto;"></td>
+      <td style="color:#888;">${p.seq||''}</td>
+      <td style="font-weight:600;white-space:nowrap;">${p.name}</td>
+      <td style="font-size:11px;color:#888;white-space:nowrap;">${p.job||''}</td>`;
     for (let d = 1; d <= daysInMonth; d++) {
       const key = String(d);
       const v = p.daily_work[key] || '';
@@ -587,16 +608,53 @@ function renderEditTable() {
       html += `<td class="edit-cell ${isRed?'red-cell':''}" 
         oncontextmenu="toggleEditRed(event,${pi},${d})" 
         ontouchstart="handleTouch(event,${pi},${d})">
-        <input type="text" value="${v}" data-pi="${pi}" data-d="${d}" 
+        <input type="text" value="${v}" 
           oninput="updateCell(${pi},${d},this.value)" 
           style="width:34px;border:none;background:transparent;text-align:center;font-size:13px;${isRed?'color:#d32f2f;font-weight:700;':''}"></td>`;
     }
     html += `<td id="ed-days-${pi}" style="font-weight:600;color:#185FA5;">${t.days}</td><td id="ed-work-${pi}" style="font-weight:600;color:#185FA5;">${t.work.toFixed(1)}</td></tr>`;
   });
+
+  // 합계 행 (전체)
+  let grandDays = 0, grandWork = 0;
+  const dayTotals = {};
+  list.forEach(p => {
+    const t = calcTotals(p.daily_work);
+    grandDays += t.days; grandWork += t.work;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const v = parseFloat(p.daily_work[String(d)]) || 0;
+      if (v > 0) dayTotals[d] = (dayTotals[d] || 0) + v;
+    }
+  });
+  html += '<tr style="background:#f0f0f0;font-weight:700;"><td class="sticky-col">합계</td><td></td><td></td><td></td>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    html += dayTotals[d] ? `<td style="color:#185FA5;font-size:11px;">${dayTotals[d].toFixed(1)}</td>` : '<td></td>';
+  }
+  html += `<td style="color:#185FA5;">${grandDays}</td><td style="color:#185FA5;">${grandWork.toFixed(1)}</td></tr>`;
   html += '</table></div>';
+
+  // 선택 합계 박스
+  html += `<div id="ed-sel-sum" style="display:none;background:#e3f2fd;border-radius:8px;padding:12px;margin-top:10px;font-size:14px;color:#0c447c;"></div>`;
   html += `<button class="btn primary" style="margin-top:12px;" onclick="saveEditTable()" id="ed-save-btn">💾 전체 저장</button>
     <div id="ed-msg" class="msg"></div>`;
   document.getElementById('ed-result').innerHTML = html;
+}
+
+function updateSelSum() {
+  const checks = document.querySelectorAll('.ed-check:checked');
+  const box = document.getElementById('ed-sel-sum');
+  if (checks.length === 0) { box.style.display = 'none'; return; }
+  let selDays = 0, selWork = 0;
+  const names = [];
+  checks.forEach(c => {
+    const p = editData.list[parseInt(c.dataset.pi)];
+    const t = calcTotals(p.daily_work);
+    selDays += t.days; selWork += t.work;
+    names.push(p.name);
+  });
+  box.style.display = 'block';
+  box.innerHTML = `<strong>선택 ${checks.length}명</strong> (${names.join(', ')})<br>
+    합계 일수 <strong>${selDays}</strong> · 공수 <strong>${selWork.toFixed(1)}</strong>`;
 }
 
 function updateCell(pi, d, val) {
@@ -607,6 +665,7 @@ function updateCell(pi, d, val) {
   const t = calcTotals(editData.list[pi].daily_work);
   document.getElementById(`ed-days-${pi}`).textContent = t.days;
   document.getElementById(`ed-work-${pi}`).textContent = t.work.toFixed(1);
+  updateSelSum();
 }
 
 function toggleEditRed(e, pi, d) {
@@ -657,7 +716,7 @@ async function workerLogin() {
     const workers = await db('GET', 'workers', null, `name=eq.${encodeURIComponent(name)}&phone=eq.${phone}&select=id,name,job_type`);
     if (!workers || workers.length === 0) return showMsg('w-msg','이름 또는 핸드폰번호가 틀렸어요','error');
     const worker = workers[0];
-    const records = await db('GET', 'work_records', null, `worker_id=eq.${worker.id}&site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=daily_work,total_days,total_work,site_name`);
+    const records = await db('GET', 'work_records', null, `worker_id=eq.${worker.id}&site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=daily_work,total_days,total_work,site_name,red_days`);
     if (!records || records.length === 0) return showMsg('w-msg','해당 월의 공수 기록이 없어요','error');
     const rec = records[0];
     document.getElementById('w-msg').className = 'msg';
@@ -666,25 +725,30 @@ async function workerLogin() {
     document.getElementById('w-total-days').textContent = rec.total_days || 0;
     document.getElementById('w-total-work').textContent = parseFloat(rec.total_work || 0).toFixed(1);
     document.getElementById('w-site-label').textContent = `${rec.site_name} · ${month}`;
-    renderDayTable('w-daytable', rec.daily_work, month);
+    renderDayTable('w-daytable', rec.daily_work, month, rec.red_days);
     document.getElementById('w-result').style.display = 'block';
   } catch(e) { showMsg('w-msg', e.message, 'error'); }
 }
 
-function renderDayTable(tableId, daily_work, month) {
+function renderDayTable(tableId, daily_work, month, red_days) {
   const [yr, mo] = month.split('-').map(Number);
   const daysInMonth = new Date(yr, mo, 0).getDate();
   const works = daily_work || {};
+  const reds = red_days || {};
   let header = '<tr><th>구분</th>';
   for (let d = 1; d <= daysInMonth; d++) {
-    const dow = new Date(yr, mo-1, d).getDay();
-    header += `<th${dow===0?' class="sun"':dow===6?' class="sat"':''}>${d}</th>`;
+    header += `<th>${d}</th>`;
   }
   header += '</tr>';
   let row = '<tr><td class="row-label">공수</td>';
   for (let d = 1; d <= daysInMonth; d++) {
     const v = works[String(d)];
-    row += v ? `<td class="worked">${v}</td>` : '<td></td>';
+    if (v) {
+      const cls = reds[String(d)] ? 'red-cell' : 'worked';
+      row += `<td class="${cls}">${v}</td>`;
+    } else {
+      row += '<td></td>';
+    }
   }
   document.getElementById(tableId).innerHTML = header + row + '</tr>';
 }
@@ -818,7 +882,7 @@ async function uploadToSupabase() {
         worker_id = created[0].id;
       }
       const recExist = await db('GET', 'work_records', null, `worker_id=eq.${worker_id}&site_name=eq.${encodeURIComponent(site_name)}&year_month=eq.${year_month}&select=id`);
-      const payload = { worker_id, site_name, year_month, company_name, daily_work: w.daily_work, total_days: w.total_days, total_work: w.total_work };
+      const payload = { worker_id, site_name, year_month, company_name, seq_no: w.num, daily_work: w.daily_work, total_days: w.total_days, total_work: w.total_work };
       if (recExist && recExist.length > 0) {
         await db('PATCH', `work_records?id=eq.${recExist[0].id}`, payload);
       } else {
