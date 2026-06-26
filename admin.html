@@ -39,6 +39,14 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 .day-table td { padding: 5px 3px; text-align: center; border: 1px solid #e8e8e8; color: #333; }
 .day-table td.worked { background: #e3f2fd; color: #1565c0; font-weight: 600; }
 .day-table td.red-cell { background: #ffebee; color: #d32f2f; font-weight: 700; }
+.edit-table { border-collapse: collapse; font-size: 13px; }
+.edit-table th { background: #f0f0f0; padding: 5px 3px; text-align: center; font-weight: 600; color: #555; border: 1px solid #e0e0e0; white-space: nowrap; }
+.edit-table td { padding: 0; text-align: center; border: 1px solid #e8e8e8; }
+.edit-table .edit-cell { background: #fff; }
+.edit-table .edit-cell.red-cell { background: #ffebee; }
+.edit-table .edit-cell input { padding: 6px 2px; }
+.edit-table .sticky-col { position: sticky; left: 0; background: #fafafa; z-index: 1; min-width: 60px; padding: 5px 8px; }
+.edit-table th.sticky-col { z-index: 2; }
 .day-table td.row-label { font-weight: 600; color: #555; background: #fafafa; white-space: nowrap; padding: 5px 8px; }
 .day-table th.sun { color: #c62828; }
 .day-table th.sat { color: #1565c0; }
@@ -202,6 +210,14 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
           <button class="btn red" onclick="deleteData()">🗑️ 삭제하기</button>
         </div>
         <div id="m-msg" class="msg"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">전체 인원 편집 (공수 수정 · 빨간색 표시)</div>
+        <label>현장 선택</label>
+        <select id="ed-site" onchange="loadEditMonths()"><option value="">-- 현장 선택 --</option></select>
+        <label>월 선택</label>
+        <select id="ed-month" onchange="loadEditTable()"><option value="">-- 월 선택 --</option></select>
+        <div id="ed-result" style="margin-top:1rem;"></div>
       </div>
       <div class="card">
         <div class="card-title">현장 목록</div>
@@ -406,6 +422,8 @@ async function loadManageSites() {
     const sel = document.getElementById('m-site');
     sel.innerHTML = '<option value="">-- 현장 선택 --</option>';
     sites.forEach(s => sel.innerHTML += `<option value="${s}">${s}</option>`);
+    const edSel = document.getElementById('ed-site');
+    if (edSel) { edSel.innerHTML = '<option value="">-- 현장 선택 --</option>'; sites.forEach(s => edSel.innerHTML += `<option value="${s}">${s}</option>`); }
     const siteMonths = {};
     data.forEach(d => {
       if (!siteMonths[d.site_name]) siteMonths[d.site_name] = new Set();
@@ -501,6 +519,132 @@ async function selectRecord(site, month) {
   document.getElementById('w-month').value = month;
   // 바로 조회
   workerLogin();
+}
+
+let editData = null;
+
+async function loadEditMonths() {
+  const site = document.getElementById('ed-site').value;
+  const sel = document.getElementById('ed-month');
+  sel.innerHTML = '<option value="">-- 월 선택 --</option>';
+  document.getElementById('ed-result').innerHTML = '';
+  if (!site) return;
+  try {
+    const data = await db('GET', 'work_records', null, `site_name=eq.${encodeURIComponent(site)}&select=year_month`);
+    [...new Set(data.map(d => d.year_month))].sort().forEach(m => sel.innerHTML += `<option value="${m}">${m}</option>`);
+  } catch(e) {}
+}
+
+async function loadEditTable() {
+  const site = document.getElementById('ed-site').value;
+  const month = document.getElementById('ed-month').value;
+  const result = document.getElementById('ed-result');
+  if (!site || !month) { result.innerHTML = ''; return; }
+  result.innerHTML = '<div style="font-size:13px;color:#999;">불러오는 중...</div>';
+  try {
+    const records = await db('GET', 'work_records', null, `site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=id,worker_id,daily_work,total_days,total_work,red_days`);
+    const workers = await db('GET', 'workers', null, 'select=id,name,job_type');
+    const wMap = {}; workers.forEach(w => wMap[w.id] = w);
+    const list = records.map(r => ({ ...r, worker: wMap[r.worker_id] || {name:'?',job_type:''} }))
+      .sort((a,b) => (a.worker.name||'').localeCompare(b.worker.name||''));
+    if (list.length === 0) { result.innerHTML = '<div style="color:#999;font-size:13px;">데이터 없음</div>'; return; }
+
+    editData = { site, month, list: list.map(r => ({
+      id: r.id, name: r.worker.name, job: r.worker.job_type,
+      daily_work: {...(r.daily_work||{})}, red_days: {...(r.red_days||{})}
+    })) };
+
+    renderEditTable();
+  } catch(e) { result.innerHTML = `<div style="color:#c62828;font-size:13px;">${e.message}</div>`; }
+}
+
+function calcTotals(dw) {
+  let work = 0, days = 0;
+  Object.values(dw).forEach(v => { const n = parseFloat(v)||0; if (n>0){ work+=n; days++; } });
+  return { work: parseFloat(work.toFixed(2)), days };
+}
+
+function renderEditTable() {
+  const { month, list } = editData;
+  const [yr, mo] = month.split('-').map(Number);
+  const daysInMonth = new Date(yr, mo, 0).getDate();
+
+  let html = `<div style="font-size:12px;color:#e65100;background:#fff3e0;padding:8px 10px;border-radius:8px;margin-bottom:8px;line-height:1.6;">
+    💡 공수 칸을 <strong>고쳐 쓰면 수정</strong>, 칸을 <strong>한 번 탭(모바일)/우클릭</strong>하면 빨간색 표시돼요.<br>
+    수정 후 <strong>저장</strong> 버튼을 꼭 눌러주세요!
+  </div>`;
+  html += '<div style="overflow-x:auto;"><table class="edit-table"><tr><th class="sticky-col">성명</th><th>직종</th>';
+  for (let d = 1; d <= daysInMonth; d++) html += `<th>${d}</th>`;
+  html += '<th>일수</th><th>공수</th></tr>';
+
+  list.forEach((p, pi) => {
+    const t = calcTotals(p.daily_work);
+    html += `<tr><td class="sticky-col" style="font-weight:600;">${p.name}</td><td style="font-size:11px;color:#888;">${p.job||''}</td>`;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const key = String(d);
+      const v = p.daily_work[key] || '';
+      const isRed = p.red_days[key];
+      html += `<td class="edit-cell ${isRed?'red-cell':''}" 
+        oncontextmenu="toggleEditRed(event,${pi},${d})" 
+        ontouchstart="handleTouch(event,${pi},${d})">
+        <input type="text" value="${v}" data-pi="${pi}" data-d="${d}" 
+          oninput="updateCell(${pi},${d},this.value)" 
+          style="width:34px;border:none;background:transparent;text-align:center;font-size:13px;${isRed?'color:#d32f2f;font-weight:700;':''}"></td>`;
+    }
+    html += `<td id="ed-days-${pi}" style="font-weight:600;color:#185FA5;">${t.days}</td><td id="ed-work-${pi}" style="font-weight:600;color:#185FA5;">${t.work.toFixed(1)}</td></tr>`;
+  });
+  html += '</table></div>';
+  html += `<button class="btn primary" style="margin-top:12px;" onclick="saveEditTable()" id="ed-save-btn">💾 전체 저장</button>
+    <div id="ed-msg" class="msg"></div>`;
+  document.getElementById('ed-result').innerHTML = html;
+}
+
+function updateCell(pi, d, val) {
+  const key = String(d);
+  const num = parseFloat(val);
+  if (val === '' || isNaN(num) || num <= 0) { delete editData.list[pi].daily_work[key]; delete editData.list[pi].red_days[key]; }
+  else { editData.list[pi].daily_work[key] = num; }
+  const t = calcTotals(editData.list[pi].daily_work);
+  document.getElementById(`ed-days-${pi}`).textContent = t.days;
+  document.getElementById(`ed-work-${pi}`).textContent = t.work.toFixed(1);
+}
+
+function toggleEditRed(e, pi, d) {
+  e.preventDefault();
+  const key = String(d);
+  if (!editData.list[pi].daily_work[key]) return; // 값 있는 칸만
+  if (editData.list[pi].red_days[key]) delete editData.list[pi].red_days[key];
+  else editData.list[pi].red_days[key] = true;
+  renderEditTable();
+}
+
+let touchTimer = null;
+function handleTouch(e, pi, d) {
+  // 길게 누르면 빨강 토글 (모바일)
+  touchTimer = setTimeout(() => { toggleEditRed(e, pi, d); }, 500);
+  const clear = () => { clearTimeout(touchTimer); };
+  e.target.addEventListener('touchend', clear, {once:true});
+  e.target.addEventListener('touchmove', clear, {once:true});
+}
+
+async function saveEditTable() {
+  const btn = document.getElementById('ed-save-btn');
+  btn.innerHTML = '<span class="spinner"></span>저장 중...';
+  btn.disabled = true;
+  let ok = 0, fail = 0;
+  for (const p of editData.list) {
+    const t = calcTotals(p.daily_work);
+    try {
+      await db('PATCH', `work_records?id=eq.${p.id}`, {
+        daily_work: p.daily_work, red_days: p.red_days,
+        total_work: t.work, total_days: t.days
+      });
+      ok++;
+    } catch(e) { console.error(p.name, e); fail++; }
+  }
+  btn.innerHTML = '💾 전체 저장';
+  btn.disabled = false;
+  showMsg('ed-msg', fail===0 ? `${ok}명 저장 완료!` : `저장 ${ok}명 / 실패 ${fail}명`, fail===0?'success':'error');
 }
 
 async function workerLogin() {
@@ -790,7 +934,7 @@ async function loadWorkerDetail(workerId, idx) {
         💡 공수 칸을 <strong>클릭</strong>하면 빨간색(특이사항)으로 표시돼요. 다시 누르면 해제!
       </div>
       <div style="overflow-x:auto;"><table class="day-table" id="${tableId}"></table></div>
-      <button class="btn primary" style="margin-top:10px;padding:9px;font-size:13px;" onclick="saveRedDays(${idx})">💾 빨간색 표시 저장</button>
+      <button class="btn primary" style="margin-top:10px;padding:9px;font-size:13px;" onclick="saveRedDays('${idx}')">💾 빨간색 표시 저장</button>
       <div id="red-msg-${idx}" class="msg" style="margin-top:8px;"></div>`;
     renderEditableDayTable(tableId, idx);
   } catch(e) { document.getElementById(`ddata-${idx}`).innerHTML = `<div style="color:#c62828;font-size:13px;">${e.message}</div>`; }
@@ -811,7 +955,7 @@ function renderEditableDayTable(tableId, idx) {
     if (v) {
       const isRed = reds[String(d)];
       const cls = isRed ? 'red-cell' : 'worked';
-      row += `<td class="${cls}" style="cursor:pointer;" onclick="toggleRed(${idx},${d})">${v}</td>`;
+      row += `<td class="${cls}" style="cursor:pointer;" onclick="toggleRed('${idx}',${d})">${v}</td>`;
     } else {
       row += '<td></td>';
     }
@@ -870,6 +1014,7 @@ async function loadStats() {
     workers.forEach(w => workerMap[w.id] = w);
     const [yr, mo] = month.split('-').map(Number);
     const daysInMonth = new Date(yr, mo, 0).getDate();
+    // dayStats[d][job] = {cnt: 인원수, work: 공수합계}
     const dayStats = {};
     const jobSet = new Set();
     for (let d = 1; d <= daysInMonth; d++) dayStats[d] = {};
@@ -879,9 +1024,12 @@ async function loadStats() {
       jobSet.add(job);
       const daily = rec.daily_work || {};
       Object.keys(daily).forEach(d => {
-        if (daily[d] > 0) {
+        const val = parseFloat(daily[d]) || 0;
+        if (val > 0) {
           if (!dayStats[d]) dayStats[d] = {};
-          dayStats[d][job] = (dayStats[d][job] || 0) + 1;
+          if (!dayStats[d][job]) dayStats[d][job] = { cnt: 0, work: 0 };
+          dayStats[d][job].cnt += 1;
+          dayStats[d][job].work += val;
         }
       });
     });
@@ -895,23 +1043,30 @@ async function loadStats() {
     html += '<th>합계</th></tr>';
     jobs.forEach(job => {
       html += `<tr><td class="job-col">${job}</td>`;
-      let total = 0;
+      let totalCnt = 0, totalWork = 0;
       for (let d = 1; d <= daysInMonth; d++) {
-        const cnt = (dayStats[d] && dayStats[d][job]) || 0;
-        total += cnt;
-        html += cnt > 0 ? `<td class="has-worker">${cnt}</td>` : '<td></td>';
+        const cell = (dayStats[d] && dayStats[d][job]) || null;
+        if (cell) {
+          totalCnt += cell.cnt;
+          totalWork += cell.work;
+          html += `<td class="has-worker"><span style="font-weight:700;">${cell.cnt}</span><br><span style="font-size:10px;color:#e65100;">${cell.work.toFixed(1)}</span></td>`;
+        } else {
+          html += '<td></td>';
+        }
       }
-      html += `<td style="font-weight:600;color:#185FA5;">${total}</td></tr>`;
+      html += `<td style="font-weight:600;color:#185FA5;"><span style="font-weight:700;">${totalCnt}</span><br><span style="font-size:10px;color:#e65100;">${totalWork.toFixed(1)}</span></td></tr>`;
     });
     html += '<tr style="background:#f0f0f0;font-weight:600;"><td class="job-col">합계</td>';
-    let grandTotal = 0;
+    let grandCnt = 0, grandWork = 0;
     for (let d = 1; d <= daysInMonth; d++) {
-      const total = Object.values(dayStats[d] || {}).reduce((a,b) => a+b, 0);
-      grandTotal += total;
-      html += total > 0 ? `<td style="color:#1a1a1a;">${total}</td>` : '<td></td>';
+      let dCnt = 0, dWork = 0;
+      Object.values(dayStats[d] || {}).forEach(c => { dCnt += c.cnt; dWork += c.work; });
+      grandCnt += dCnt; grandWork += dWork;
+      html += (dCnt > 0) ? `<td><span style="color:#1a1a1a;font-weight:700;">${dCnt}</span><br><span style="font-size:10px;color:#e65100;">${dWork.toFixed(1)}</span></td>` : '<td></td>';
     }
-    html += `<td style="color:#185FA5;">${grandTotal}</td></tr></table></div>`;
-    result.innerHTML = `<div style="font-size:13px;color:#666;margin-bottom:8px;">${site} · ${month} 직종별 일별 인원</div>` + html;
+    html += `<td style="color:#185FA5;"><span style="font-weight:700;">${grandCnt}</span><br><span style="font-size:10px;color:#e65100;">${grandWork.toFixed(1)}</span></td></tr></table></div>`;
+    html += '<div style="font-size:12px;color:#888;margin-top:8px;">※ 윗숫자=인원수(명), <span style="color:#e65100;">아랫숫자=공수합계</span></div>';
+    result.innerHTML = `<div style="font-size:13px;color:#666;margin-bottom:8px;">${site} · ${month} 직종별 일별 인원/공수</div>` + html;
   } catch(e) { result.innerHTML = `<div style="color:#c62828;font-size:13px;">${e.message}</div>`; }
 }
 
