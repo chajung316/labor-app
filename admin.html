@@ -27,7 +27,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 .btn.primary { background: #185FA5; border-color: #185FA5; color: #fff; }
 .btn.green { background: #2e7d32; border-color: #2e7d32; color: #fff; }
 .btn.red { background: #c62828; border-color: #c62828; color: #fff; }
-.msg { font-size: 13px; padding: 10px 12px; border-radius: 8px; margin-top: 1rem; display: none; }
+.msg { font-size: 13px; padding: 10px 12px; border-radius: 8px; margin-top: 1rem; display: none; white-space: pre-line; line-height: 1.5; }
 .msg.success { background: #e8f5e9; color: #2e7d32; display: block; }
 .msg.error { background: #fdecea; color: #c62828; display: block; }
 .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 1rem 0; }
@@ -195,24 +195,9 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
     <div id="manage-content" style="display:none;">
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-          <span class="card-title" style="margin:0;">현장별 데이터 삭제</span>
+          <span class="card-title" style="margin:0;">전체 인원 편집 (공수 · 일당 수정)</span>
           <button class="lock-btn" onclick="adminLock()">🔒 잠금</button>
         </div>
-        <label>현장 선택</label>
-        <select id="m-site" onchange="loadMonths()"><option value="">-- 현장 선택 --</option></select>
-        <label>월 선택</label>
-        <select id="m-month"><option value="">-- 월 선택 --</option></select>
-        <button class="btn" style="margin-top:1rem;" onclick="previewDelete()">조회하기</button>
-        <div id="m-preview" style="display:none; margin-top:1rem;">
-          <div style="background:#fdecea;border-radius:8px;padding:12px;font-size:13px;color:#c62828;margin-bottom:1rem;">
-            ⚠️ <strong id="m-count">0</strong>명의 데이터가 삭제됩니다. 복구 불가!
-          </div>
-          <button class="btn red" onclick="deleteData()">🗑️ 삭제하기</button>
-        </div>
-        <div id="m-msg" class="msg"></div>
-      </div>
-      <div class="card">
-        <div class="card-title">전체 인원 편집 (공수 수정 · 빨간색 표시)</div>
         <label>현장 선택</label>
         <select id="ed-site" onchange="loadEditMonths()"><option value="">-- 현장 선택 --</option></select>
         <label>월 선택</label>
@@ -233,6 +218,26 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
         <input type="password" id="cp-new2" placeholder="새 비밀번호 다시 입력">
         <button class="btn primary" onclick="changePassword()">비밀번호 변경</button>
         <div id="cp-msg" class="msg"></div>
+      </div>
+      <div class="card">
+        <div class="card-title" style="margin:0;cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="toggleDeleteCard()">
+          <span>🗑️ 현장별 데이터 삭제 <span style="color:#c62828;font-size:11px;font-weight:400;">(위험 · 복구불가)</span></span>
+          <span id="del-toggle-arrow" style="color:#999;font-weight:400;">▼ 펼치기</span>
+        </div>
+        <div id="del-card-body" style="display:none;margin-top:1rem;">
+          <label>현장 선택</label>
+          <select id="m-site" onchange="loadMonths()"><option value="">-- 현장 선택 --</option></select>
+          <label>월 선택</label>
+          <select id="m-month"><option value="">-- 월 선택 --</option></select>
+          <button class="btn" style="margin-top:1rem;" onclick="previewDelete()">조회하기</button>
+          <div id="m-preview" style="display:none; margin-top:1rem;">
+            <div style="background:#fdecea;border-radius:8px;padding:12px;font-size:13px;color:#c62828;margin-bottom:1rem;">
+              ⚠️ <strong id="m-count">0</strong>명의 데이터가 삭제됩니다. 복구 불가!
+            </div>
+            <button class="btn red" onclick="deleteData()">🗑️ 삭제하기</button>
+          </div>
+          <div id="m-msg" class="msg"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -387,6 +392,14 @@ function adminLock() {
     if (lock) lock.style.display = 'block';
     if (content) content.style.display = 'none';
   });
+}
+
+function toggleDeleteCard() {
+  const body = document.getElementById('del-card-body');
+  const arrow = document.getElementById('del-toggle-arrow');
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  arrow.textContent = isOpen ? '▼ 펼치기' : '▲ 접기';
 }
 
 function changePassword() {
@@ -889,7 +902,7 @@ async function uploadToSupabase() {
   btn.innerHTML = '<span class="spinner"></span>저장 중...';
   btn.disabled = true;
   document.getElementById('u-progress').style.display = 'block';
-  let success = 0, fail = 0;
+  let success = 0, fail = 0, firstError = '';
   for (let i = 0; i < parsedWorkers.length; i++) {
     const w = parsedWorkers[i];
     document.getElementById('u-bar').style.width = Math.round((i/parsedWorkers.length)*100) + '%';
@@ -912,12 +925,17 @@ async function uploadToSupabase() {
         await db('POST', 'work_records', payload);
       }
       success++;
-    } catch(e) { console.error(w.name, e); fail++; }
+    } catch(e) { console.error(w.name, e); fail++; if (!firstError) firstError = e.message; }
   }
   document.getElementById('u-bar').style.width = '100%';
   btn.innerHTML = '✅ 저장 완료';
   btn.disabled = false;
-  showMsg('u-msg', fail===0 ? `${success}명 저장 완료!` : `저장 ${success}명 / 실패 ${fail}명`, fail===0 ? 'success' : 'error');
+  let resultMsg = fail===0 ? `${success}명 저장 완료!` : `저장 ${success}명 / 실패 ${fail}명`;
+  if (fail > 0 && firstError) {
+    resultMsg += `\n원인: ${firstError}`;
+    if (/daily_wage/.test(firstError)) resultMsg += `\n→ Supabase에서 daily_wage 칸을 먼저 만들어주세요 (SQL 1줄)`;
+  }
+  showMsg('u-msg', resultMsg, fail===0 ? 'success' : 'error');
 }
 
 async function loadList() {
