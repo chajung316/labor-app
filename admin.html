@@ -19,6 +19,9 @@ h1 { font-size: 20px; font-weight: 600; text-align: center; padding: 1.2rem 0 1r
 .screen.active { display: block; }
 .card { background: #fff; border: 1px solid #e8e8e8; border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; }
 .card-title { font-size: 14px; color: #666; font-weight: 600; margin-bottom: 1rem; }
+.collapsible-head { cursor: pointer; display: flex; justify-content: space-between; align-items: center; margin-bottom: 0; }
+.toggle-arrow { color: #999; font-weight: 400; font-size: 13px; white-space: nowrap; margin-left: 8px; }
+.card-body { margin-top: 1rem; }
 label { font-size: 13px; color: #666; display: block; margin-bottom: 4px; margin-top: 12px; }
 label:first-of-type { margin-top: 0; }
 input, select { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; background: #fafafa; color: #222; outline: none; }
@@ -109,33 +112,22 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
   <!-- 작업자 조회 -->
   <div id="screen-worker" class="screen active">
     <div class="card">
+      <div class="card-title">작업자 이력 표시 <span style="font-weight:400;color:#999;font-size:12px;">· 관리자 설정</span></div>
+      <select id="w-hist-mode" onchange="setHistoryMode(this.value)">
+        <option value="all">전체 근무 이력 보여주기</option>
+        <option value="recent">최근 월만 보여주기</option>
+      </select>
+    </div>
+    <div class="card">
       <div class="card-title">본인 공수 조회</div>
       <label>이름</label>
       <input type="text" id="w-name" placeholder="홍길동">
       <label>핸드폰번호 (숫자만)</label>
       <input type="tel" id="w-phone" placeholder="01012345678">
-      <button class="btn" style="margin-top:0.75rem;" onclick="findMyRecords()">🔍 내 근무 이력 찾기</button>
-      <div id="w-history" style="display:none; margin-top:0.75rem;"></div>
-      <label>현장 선택</label>
-      <select id="w-site"><option value="">-- 현장 선택 --</option></select>
-      <label>조회 월</label>
-      <input type="month" id="w-month">
-      <button class="btn primary" onclick="workerLogin()">조회하기</button>
+      <button class="btn primary" style="margin-top:1rem;" onclick="workerLogin()">🔍 조회하기</button>
       <div id="w-msg" class="msg"></div>
     </div>
-    <div id="w-result" style="display:none;">
-      <div class="card">
-        <div class="card-title" id="w-name-label"></div>
-        <div id="w-job-badge"></div>
-        <div class="stat-grid">
-          <div class="stat"><div class="val" id="w-total-days">0</div><div class="lbl">출력일수</div></div>
-          <div class="stat"><div class="val" id="w-total-work">0</div><div class="lbl">출력공수</div></div>
-        </div>
-        <div class="card-title" style="margin-top:0.5rem;">일별 근로 내역</div>
-        <div style="overflow-x:auto;"><table class="day-table" id="w-daytable"></table></div>
-        <div class="site-info" id="w-site-label"></div>
-      </div>
-    </div>
+    <div id="w-result" style="display:none;"></div>
   </div>
 
   <!-- 엑셀 업로드 -->
@@ -193,38 +185,53 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
       <div id="am-msg" class="msg"></div>
     </div>
     <div id="manage-content" style="display:none;">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:0.75rem;">
+        <button class="lock-btn" onclick="adminLock()">🔒 잠금</button>
+      </div>
       <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-          <span class="card-title" style="margin:0;">전체 인원 편집 (공수 · 일당 수정)</span>
-          <button class="lock-btn" onclick="adminLock()">🔒 잠금</button>
+        <div class="card-title collapsible-head" onclick="toggleCard('edit')">
+          <span>✏️ 전체 인원 편집 (공수 · 일당 수정)</span>
+          <span class="toggle-arrow" id="arrow-edit">▼ 펼치기</span>
         </div>
-        <label>현장 선택</label>
-        <select id="ed-site" onchange="loadEditMonths()"><option value="">-- 현장 선택 --</option></select>
-        <label>월 선택</label>
-        <select id="ed-month" onchange="loadEditTable()"><option value="">-- 월 선택 --</option></select>
-        <div id="ed-result" style="margin-top:1rem;"></div>
+        <div class="card-body" id="body-edit" style="display:none;">
+          <label>현장 선택</label>
+          <select id="ed-site" onchange="loadEditMonths()"><option value="">-- 현장 선택 --</option></select>
+          <label>월 선택</label>
+          <select id="ed-month" onchange="loadEditTable()"><option value="">-- 월 선택 --</option></select>
+          <div id="ed-result" style="margin-top:1rem;"></div>
+        </div>
       </div>
       <div class="card">
-        <div class="card-title">현장 목록</div>
-        <div id="site-list-body" style="font-size:14px;color:#888;">불러오는 중...</div>
+        <div class="card-title collapsible-head" onclick="toggleCard('sites')">
+          <span>🏗️ 현장 목록</span>
+          <span class="toggle-arrow" id="arrow-sites">▼ 펼치기</span>
+        </div>
+        <div class="card-body" id="body-sites" style="display:none;">
+          <div id="site-list-body" style="font-size:14px;color:#888;">불러오는 중...</div>
+        </div>
       </div>
       <div class="card">
-        <div class="card-title">관리자 비밀번호 변경</div>
-        <label>현재 비밀번호</label>
-        <input type="password" id="cp-old" placeholder="현재 비밀번호">
-        <label>새 비밀번호</label>
-        <input type="password" id="cp-new" placeholder="새 비밀번호">
-        <label>새 비밀번호 확인</label>
-        <input type="password" id="cp-new2" placeholder="새 비밀번호 다시 입력">
-        <button class="btn primary" onclick="changePassword()">비밀번호 변경</button>
-        <div id="cp-msg" class="msg"></div>
+        <div class="card-title collapsible-head" onclick="toggleCard('pass')">
+          <span>🔑 관리자 비밀번호 변경</span>
+          <span class="toggle-arrow" id="arrow-pass">▼ 펼치기</span>
+        </div>
+        <div class="card-body" id="body-pass" style="display:none;">
+          <label>현재 비밀번호</label>
+          <input type="password" id="cp-old" placeholder="현재 비밀번호">
+          <label>새 비밀번호</label>
+          <input type="password" id="cp-new" placeholder="새 비밀번호">
+          <label>새 비밀번호 확인</label>
+          <input type="password" id="cp-new2" placeholder="새 비밀번호 다시 입력">
+          <button class="btn primary" onclick="changePassword()">비밀번호 변경</button>
+          <div id="cp-msg" class="msg"></div>
+        </div>
       </div>
       <div class="card">
-        <div class="card-title" style="margin:0;cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="toggleDeleteCard()">
+        <div class="card-title collapsible-head" onclick="toggleCard('del')">
           <span>🗑️ 현장별 데이터 삭제 <span style="color:#c62828;font-size:11px;font-weight:400;">(위험 · 복구불가)</span></span>
-          <span id="del-toggle-arrow" style="color:#999;font-weight:400;">▼ 펼치기</span>
+          <span class="toggle-arrow" id="arrow-del">▼ 펼치기</span>
         </div>
-        <div id="del-card-body" style="display:none;margin-top:1rem;">
+        <div class="card-body" id="body-del" style="display:none;">
           <label>현장 선택</label>
           <select id="m-site" onchange="loadMonths()"><option value="">-- 현장 선택 --</option></select>
           <label>월 선택</label>
@@ -394,13 +401,19 @@ function adminLock() {
   });
 }
 
-function toggleDeleteCard() {
-  const body = document.getElementById('del-card-body');
-  const arrow = document.getElementById('del-toggle-arrow');
+function toggleCard(key) {
+  const body = document.getElementById('body-' + key);
+  const arrow = document.getElementById('arrow-' + key);
+  if (!body) return;
   const isOpen = body.style.display !== 'none';
   body.style.display = isOpen ? 'none' : 'block';
-  arrow.textContent = isOpen ? '▼ 펼치기' : '▲ 접기';
+  if (arrow) arrow.textContent = isOpen ? '▼ 펼치기' : '▲ 접기';
 }
+
+// 작업자 이력 표시 모드 (전체 / 최근월)
+const HIST_MODE_KEY = 'worker_hist_mode';
+function getHistoryMode() { return localStorage.getItem(HIST_MODE_KEY) || 'all'; }
+function setHistoryMode(v) { localStorage.setItem(HIST_MODE_KEY, v); }
 
 function changePassword() {
   const oldP = document.getElementById('cp-old').value;
@@ -436,10 +449,11 @@ function showTab(tab) {
 }
 
 async function loadSites() {
+  const sel = document.getElementById('w-site');
+  if (!sel) return;
   try {
     const data = await db('GET', 'work_records', null, 'select=site_name');
     const sites = [...new Set(data.map(d => d.site_name))].sort();
-    const sel = document.getElementById('w-site');
     sel.innerHTML = '<option value="">-- 현장 선택 --</option>';
     sites.forEach(s => sel.innerHTML += `<option value="${s}">${s}</option>`);
   } catch(e) {}
@@ -502,55 +516,6 @@ async function deleteData() {
   } catch(e) { showMsg('m-msg', e.message, 'error'); }
 }
 
-async function findMyRecords() {
-  const name = document.getElementById('w-name').value.trim();
-  const phone = normalizePhone(document.getElementById('w-phone').value);
-  const histDiv = document.getElementById('w-history');
-  if (!name || !phone) return showMsg('w-msg','이름과 핸드폰번호를 입력해주세요','error');
-  document.getElementById('w-msg').className = 'msg';
-  histDiv.style.display = 'block';
-  histDiv.innerHTML = '<div style="font-size:13px;color:#999;padding:8px;">찾는 중...</div>';
-  try {
-    const workers = await db('GET', 'workers', null, `name=eq.${encodeURIComponent(name)}&phone=eq.${phone}&select=id,name`);
-    if (!workers || workers.length === 0) {
-      histDiv.innerHTML = '<div style="font-size:13px;color:#c62828;padding:8px;background:#fdecea;border-radius:8px;">이름 또는 핸드폰번호가 일치하지 않아요</div>';
-      return;
-    }
-    const worker = workers[0];
-    const records = await db('GET', 'work_records', null, `worker_id=eq.${worker.id}&select=site_name,year_month,total_work,total_days&order=year_month.desc`);
-    if (!records || records.length === 0) {
-      histDiv.innerHTML = '<div style="font-size:13px;color:#999;padding:8px;">근무 기록이 없어요</div>';
-      return;
-    }
-    histDiv.innerHTML = `
-      <div style="font-size:13px;font-weight:600;color:#555;margin-bottom:6px;">📋 ${worker.name}님 근무 이력 (클릭하면 자동선택)</div>
-      ${records.map(r => `
-        <div onclick="selectRecord('${r.site_name.replace(/'/g,"\\'")}','${r.year_month}')" style="cursor:pointer;background:#f9f9f9;border-radius:8px;padding:10px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;border:1px solid #eee;">
-          <div>
-            <div style="font-size:13px;font-weight:600;color:#185FA5;">${r.year_month}</div>
-            <div style="font-size:12px;color:#999;">${r.site_name}</div>
-          </div>
-          <div style="font-size:13px;text-align:right;">
-            <span style="color:#888;">공수</span> <strong style="color:#185FA5;">${parseFloat(r.total_work).toFixed(1)}</strong>
-          </div>
-        </div>`).join('')}`;
-  } catch(e) {
-    histDiv.innerHTML = `<div style="font-size:13px;color:#c62828;padding:8px;">오류: ${e.message}</div>`;
-  }
-}
-
-async function selectRecord(site, month) {
-  // 현장 셀렉트에 옵션 없으면 추가
-  const siteSel = document.getElementById('w-site');
-  if (![...siteSel.options].some(o => o.value === site)) {
-    siteSel.innerHTML += `<option value="${site}">${site}</option>`;
-  }
-  siteSel.value = site;
-  document.getElementById('w-month').value = month;
-  // 바로 조회
-  workerLogin();
-}
-
 let editData = null;
 
 async function loadEditMonths() {
@@ -572,11 +537,18 @@ async function loadEditTable() {
   if (!site || !month) { result.innerHTML = ''; return; }
   result.innerHTML = '<div style="font-size:13px;color:#999;">불러오는 중...</div>';
   try {
-    const records = await db('GET', 'work_records', null, `site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=id,worker_id,daily_work,total_days,total_work,red_days,seq_no,daily_wage`);
+    let records;
+    try {
+      records = await db('GET', 'work_records', null, `site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=id,worker_id,daily_work,total_days,total_work,red_days,seq_no,daily_wage`);
+    } catch(colErr) {
+      // seq_no / daily_wage 칸이 아직 없으면 기본 칸만으로 재시도 (DB에 칸 추가하면 정상 동작)
+      console.warn('칼럼 누락, 안전 모드로 재조회:', colErr.message);
+      records = await db('GET', 'work_records', null, `site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=id,worker_id,daily_work,total_days,total_work,red_days`);
+    }
     const workers = await db('GET', 'workers', null, 'select=id,name,job_type');
     const wMap = {}; workers.forEach(w => wMap[w.id] = w);
     const list = records.map(r => ({ ...r, worker: wMap[r.worker_id] || {name:'?',job_type:''} }))
-      .sort((a,b) => (a.seq_no||9999) - (b.seq_no||9999));  // 번호순(엑셀 올린 순서)
+      .sort((a,b) => ((a.seq_no==null?9999:a.seq_no)) - ((b.seq_no==null?9999:b.seq_no)));  // 번호순(엑셀 올린 순서)
     if (list.length === 0) { result.innerHTML = '<div style="color:#999;font-size:13px;">데이터 없음</div>'; return; }
 
     editData = { site, month, list: list.map(r => ({
@@ -741,25 +713,44 @@ async function saveEditTable() {
 async function workerLogin() {
   const name = document.getElementById('w-name').value.trim();
   const phone = normalizePhone(document.getElementById('w-phone').value);
-  const site = document.getElementById('w-site').value;
-  const month = document.getElementById('w-month').value;
-  if (!name || !phone || !site || !month) return showMsg('w-msg','모두 입력해주세요','error');
+  if (!name || !phone) return showMsg('w-msg','이름과 핸드폰번호를 입력해주세요','error');
   try {
     const workers = await db('GET', 'workers', null, `name=eq.${encodeURIComponent(name)}&phone=eq.${phone}&select=id,name,job_type`);
     if (!workers || workers.length === 0) return showMsg('w-msg','이름 또는 핸드폰번호가 틀렸어요','error');
     const worker = workers[0];
-    const records = await db('GET', 'work_records', null, `worker_id=eq.${worker.id}&site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=daily_work,total_days,total_work,site_name,red_days`);
-    if (!records || records.length === 0) return showMsg('w-msg','해당 월의 공수 기록이 없어요','error');
-    const rec = records[0];
+    let records = await db('GET', 'work_records', null, `worker_id=eq.${worker.id}&select=daily_work,total_days,total_work,site_name,year_month,red_days&order=year_month.desc`);
+    if (!records || records.length === 0) return showMsg('w-msg','근무 기록이 없어요','error');
     document.getElementById('w-msg').className = 'msg';
-    document.getElementById('w-name-label').textContent = `${worker.name}님의 공수`;
-    document.getElementById('w-job-badge').innerHTML = worker.job_type ? `<span class="badge-job">${worker.job_type}</span>` : '';
-    document.getElementById('w-total-days').textContent = rec.total_days || 0;
-    document.getElementById('w-total-work').textContent = parseFloat(rec.total_work || 0).toFixed(1);
-    document.getElementById('w-site-label').textContent = `${rec.site_name} · ${month}`;
-    renderDayTable('w-daytable', rec.daily_work, month, rec.red_days);
-    document.getElementById('w-result').style.display = 'block';
+    // 관리자 설정: 전체 / 최근월만
+    if (getHistoryMode() === 'recent') records = records.slice(0, 1);
+    renderWorkerResult(worker, records);
   } catch(e) { showMsg('w-msg', e.message, 'error'); }
+}
+
+function renderWorkerResult(worker, records) {
+  const wrap = document.getElementById('w-result');
+  let html = `<div class="card">
+    <div class="card-title">${worker.name}님의 공수</div>
+    ${worker.job_type ? `<div><span class="badge-job">${worker.job_type}</span></div>` : ''}
+    <div style="font-size:12px;color:#999;margin-top:4px;">총 ${records.length}개월 기록${getHistoryMode()==='recent'?' (최근 월)':''}</div>
+  </div>`;
+  records.forEach((rec, i) => {
+    html += `<div class="card">
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+        <span style="color:#185FA5;">${rec.year_month}</span>
+        <span style="color:#999;font-weight:400;font-size:12px;">${rec.site_name}</span>
+      </div>
+      <div class="stat-grid">
+        <div class="stat"><div class="val">${rec.total_days || 0}</div><div class="lbl">출력일수</div></div>
+        <div class="stat"><div class="val">${parseFloat(rec.total_work || 0).toFixed(1)}</div><div class="lbl">출력공수</div></div>
+      </div>
+      <div class="card-title" style="margin:0.5rem 0;">일별 근로 내역</div>
+      <div style="overflow-x:auto;"><table class="day-table" id="wdt-${i}"></table></div>
+    </div>`;
+  });
+  wrap.innerHTML = html;
+  wrap.style.display = 'block';
+  records.forEach((rec, i) => renderDayTable(`wdt-${i}`, rec.daily_work, rec.year_month, rec.red_days));
 }
 
 function renderDayTable(tableId, daily_work, month, red_days) {
@@ -1333,16 +1324,24 @@ async function generatePaySlips() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF('p', 'mm', 'a4');
     const pageW = 210, pageH = 297, margin = 12;
-    const halfH = (pageH - margin*2) / 2; // A4 절반 높이
+    const contentW = pageW - margin*2;
+    const maxSlipH = (pageH - margin*2) / 2 - 6; // 한 명당 최대 높이 (절반 안에 들어가게)
 
     for (let i = 0; i < list.length; i += 2) {
       if (i > 0) pdf.addPage();
-      // 위쪽 1명
-      const item1 = list[i];
-      await renderToHalf(pdf, item1, month, company, margin, margin, pageW - margin*2, halfH - 4);
-      // 아래쪽 1명
-      if (list[i+1]) {
-        await renderToHalf(pdf, list[i+1], month, company, margin, margin + halfH + 4, pageW - margin*2, halfH - 4);
+      // 이 페이지에 들어갈 명세서들을 먼저 이미지로 만들고 높이 측정
+      const slips = [];
+      slips.push(await renderSlipImage(list[i], month, company, contentW, maxSlipH));
+      if (list[i+1]) slips.push(await renderSlipImage(list[i+1], month, company, contentW, maxSlipH));
+
+      // 위·(가운데)·아래 여백이 모두 똑같도록 균등 배치
+      const totalH = slips.reduce((s, im) => s + im.imgH, 0);
+      const gap = (pageH - totalH) / (slips.length + 1);
+      let y = gap;
+      for (const im of slips) {
+        const x = (pageW - im.imgW) / 2; // 가로 가운데 정렬
+        pdf.addImage(im.imgData, 'JPEG', x, y, im.imgW, im.imgH);
+        y += im.imgH + gap;
       }
       btn.innerHTML = `<span class="spinner"></span>${Math.min(i+2, list.length)}/${list.length}명...`;
     }
@@ -1357,7 +1356,7 @@ async function generatePaySlips() {
   btn.disabled = false;
 }
 
-async function renderToHalf(pdf, item, month, company, x, y, w, maxH) {
+async function renderSlipImage(item, month, company, w, maxH) {
   const holder = document.createElement('div');
   holder.style.cssText = 'position:absolute;left:-9999px;top:0;width:740px;background:#fff;';
   holder.innerHTML = `<div style="font-family:sans-serif;">${buildPaySlipHTML(item.worker, item.rec, month, company)}</div>` + getPaySlipStyle();
@@ -1365,11 +1364,11 @@ async function renderToHalf(pdf, item, month, company, x, y, w, maxH) {
   const canvas = await html2canvas(holder, { scale: 2, backgroundColor: '#fff' });
   document.body.removeChild(holder);
   const imgData = canvas.toDataURL('image/jpeg', 0.92);
-  let imgH = canvas.height * w / canvas.width;
   let imgW = w;
-  // 절반 높이 초과시 높이에 맞춤
+  let imgH = canvas.height * w / canvas.width;
+  // 절반 높이 초과시 높이에 맞춰 축소
   if (imgH > maxH) { imgH = maxH; imgW = canvas.width * maxH / canvas.height; }
-  pdf.addImage(imgData, 'JPEG', x, y, imgW, imgH);
+  return { imgData, imgW, imgH };
 }
 
 function getPaySlipStyle() {
@@ -1392,8 +1391,9 @@ function getPaySlipStyle() {
 
 const now = new Date();
 const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-document.getElementById('w-month').value = ym;
 document.getElementById('u-month').value = ym;
+const histSel = document.getElementById('w-hist-mode');
+if (histSel) histSel.value = getHistoryMode();
 loadSites();
 </script>
 </body>
