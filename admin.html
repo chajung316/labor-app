@@ -104,7 +104,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 <div class="container">
   <h1>⚒️ 노무비 공수 조회 <span style="font-size:13px;color:#185FA5;font-weight:400;">[관리자]</span></h1>
   <div style="text-align:center;margin-bottom:1rem;"><a href="labor-app.html" style="font-size:13px;color:#888;text-decoration:none;">→ 작업자용 페이지로</a></div>
-  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0627-H (색깔엑셀)</div>
+  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0627-I (잠금저장)</div>
   <div class="tab-bar">
     <div class="tab active" onclick="showTab('worker')">공수조회</div>
     <div class="tab" onclick="showTab('upload')">업로드</div>
@@ -1316,7 +1316,7 @@ function filterWorkers() {
 async function resetWorkerPw(id, name) {
   if (!confirm(`${name}님의 비밀번호를 초기화할까요?\n(다음 조회 때 비밀번호를 새로 설정하게 돼요)`)) return;
   try {
-    await db('PATCH', `workers?id=eq.${id}`, { password: null });
+    await db('PATCH', `workers?id=eq.${id}`, { password: null, pw_fails: 0, locked: false });
     alert(`${name}님 비밀번호가 초기화됐어요.`);
   } catch(e) { alert('오류: ' + e.message); }
 }
