@@ -100,7 +100,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 <div class="container">
   <h1>⚒️ 노무비 공수 조회 <span style="font-size:13px;color:#185FA5;font-weight:400;">[관리자]</span></h1>
   <div style="text-align:center;margin-bottom:1rem;"><a href="labor-app.html" style="font-size:13px;color:#888;text-decoration:none;">→ 작업자용 페이지로</a></div>
-  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0627-B (범위·설정·명단)</div>
+  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0627-D (회원가입)</div>
   <div class="tab-bar">
     <div class="tab active" onclick="showTab('worker')">공수조회</div>
     <div class="tab" onclick="showTab('upload')">업로드</div>
@@ -111,9 +111,8 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
     <div class="tab" onclick="showTab('settings')">설정</div>
   </div>
 
-  <!-- 작업자 조회 -->
+  <!-- 작업자 조회 (관리자 전용 설정만) -->
   <div id="screen-worker" class="screen active">
-    <!-- 관리자 전용: 잠금 해제했을 때만 보임 (작업자에게는 안 보임) -->
     <div id="worker-admin-box" style="display:none;">
       <div class="card">
         <div class="card-title">⚙️ 작업자 이력 표시 <span style="font-weight:400;color:#999;font-size:12px;">· 관리자 전용</span></div>
@@ -121,6 +120,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
         <select id="w-hist-mode" onchange="onHistModeChange(this.value)">
           <option value="all">전체 근무 이력 보여주기</option>
           <option value="period">특정 현장·월만 보여주기</option>
+          <option value="none">안 보여주기 (조회 차단)</option>
         </select>
         <div id="hist-period-box" style="display:none;">
           <label>현장</label>
@@ -131,17 +131,10 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
         <div id="hist-msg" class="msg"></div>
       </div>
     </div>
-    <!-- 작업자용 (공개) -->
-    <div class="card">
-      <div class="card-title">본인 공수 조회</div>
-      <label>이름</label>
-      <input type="text" id="w-name" placeholder="홍길동">
-      <label>핸드폰번호 (숫자만)</label>
-      <input type="tel" id="w-phone" placeholder="01012345678">
-      <button class="btn primary" style="margin-top:1rem;" onclick="workerLogin()">🔍 조회하기</button>
-      <div id="w-msg" class="msg"></div>
+    <div id="worker-locked-note" class="card" style="text-align:center;color:#999;font-size:14px;">
+      작업자는 <a href="labor-app.html" style="color:#185FA5;">작업자용 페이지</a>에서 조회하세요.<br>
+      <span style="font-size:12px;">(관리자 설정은 잠금 해제 후 보여요)</span>
     </div>
-    <div id="w-result" style="display:none;"></div>
   </div>
 
   <!-- 엑셀 업로드 -->
@@ -444,6 +437,8 @@ function adminLock() {
 
 function revealWorkerAdminBox() {
   const box = document.getElementById('worker-admin-box');
+  const note = document.getElementById('worker-locked-note');
+  if (note) note.style.display = window._adminUnlocked ? 'none' : 'block';
   if (!box) return;
   box.style.display = window._adminUnlocked ? 'block' : 'none';
   if (window._adminUnlocked) refreshHistUI();
@@ -500,7 +495,7 @@ async function persistHistSettings() {
     await saveSetting('worker_hist_mode', _histMode);
     await saveSetting('worker_hist_site', _histSite);
     await saveSetting('worker_hist_month', _histMonth);
-    const label = _histMode === 'all' ? '전체 이력' : `${_histSite || '(현장 미선택)'} · ${_histMonth || '(월 미선택)'}`;
+    const label = _histMode === 'all' ? '전체 이력' : (_histMode === 'none' ? '조회 차단' : `${_histSite || '(현장 미선택)'} · ${_histMonth || '(월 미선택)'}`);
     showMsg('hist-msg', `✅ 저장됨 — 작업자에게 [${label}] 적용돼요`, 'success');
   } catch(e) {
     showMsg('hist-msg', `⚠️ DB 저장 실패: ${e.message}\n→ app_settings 테이블 SQL을 먼저 실행해야 작업자 폰에 적용돼요`, 'error');
@@ -770,6 +765,10 @@ function renderEditTable() {
     💡 공수 칸을 <strong>고쳐 쓰면 수정</strong>, 칸을 <strong>우클릭/길게 누르면</strong> 빨간색 표시.<br>
     왼쪽 <strong>체크박스</strong>로 선택하면 아래에 선택 합계가 나와요. 수정 후 <strong>저장</strong> 필수!
   </div>`;
+  html += `<div style="display:flex;gap:6px;margin-bottom:8px;">
+    <button class="lock-btn" onclick="edCheckAll(true)">전체선택</button>
+    <button class="lock-btn" onclick="edCheckAll(false)">전체해제</button>
+  </div>`;
   html += '<div style="overflow-x:auto;"><table class="edit-table"><tr><th class="sticky-col">✓</th><th>번호</th><th>성명</th><th>직종</th><th>일당</th>';
   for (let d = 1; d <= daysInMonth; d++) html += `<th>${d}</th>`;
   html += '<th>일수</th><th>공수</th><th>노무비</th></tr>';
@@ -819,7 +818,56 @@ function renderEditTable() {
   html += `<div id="ed-sel-sum" style="display:none;background:#e3f2fd;border-radius:8px;padding:12px;margin-top:10px;font-size:14px;color:#0c447c;"></div>`;
   html += `<button class="btn primary" style="margin-top:12px;" onclick="saveEditTable()" id="ed-save-btn">💾 전체 저장</button>
     <div id="ed-msg" class="msg"></div>`;
+  html += `<div id="ed-jobday" style="margin-top:1.2rem;"></div>`;
   document.getElementById('ed-result').innerHTML = html;
+  renderJobDaySummary();
+}
+
+function edCheckAll(on) {
+  document.querySelectorAll('.ed-check').forEach(c => c.checked = on);
+  updateSelSum();
+}
+
+function renderJobDaySummary() {
+  if (!editData) return;
+  const box = document.getElementById('ed-jobday');
+  if (!box) return;
+  const { month, list } = editData;
+  const [yr, mo] = month.split('-').map(Number);
+  const daysInMonth = new Date(yr, mo, 0).getDate();
+  // jobDay[job][day] = 인원수
+  const jobDay = {}; const jobs = [];
+  list.forEach(p => {
+    const job = p.job || '미분류';
+    if (!jobDay[job]) { jobDay[job] = {}; jobs.push(job); }
+    for (let d = 1; d <= daysInMonth; d++) {
+      if ((parseFloat(p.daily_work[String(d)]) || 0) > 0) jobDay[job][d] = (jobDay[job][d] || 0) + 1;
+    }
+  });
+  jobs.sort();
+  let html = `<div class="card-title" style="font-size:14px;margin-bottom:6px;">직종별 일별 인원수 <span style="font-weight:400;color:#999;font-size:12px;">(명)</span></div>`;
+  html += '<div style="overflow-x:auto;"><table class="day-stat-table"><tr><th>직종</th>';
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dow = new Date(yr, mo-1, d).getDay();
+    html += `<th style="${dow===0?'color:#c62828':dow===6?'color:#1565c0':''}">${d}</th>`;
+  }
+  html += '<th>합계</th></tr>';
+  const dayGrand = {};
+  jobs.forEach(job => {
+    html += `<tr><td class="job-col">${job}</td>`;
+    let rowTot = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const c = jobDay[job][d] || 0;
+      if (c > 0) { rowTot += c; dayGrand[d] = (dayGrand[d] || 0) + c; html += `<td class="has-worker">${c}</td>`; }
+      else html += '<td></td>';
+    }
+    html += `<td style="font-weight:700;color:#185FA5;">${rowTot}</td></tr>`;
+  });
+  html += '<tr style="background:#f0f0f0;font-weight:700;"><td class="job-col">합계</td>';
+  let grand = 0;
+  for (let d = 1; d <= daysInMonth; d++) { const c = dayGrand[d] || 0; grand += c; html += c>0?`<td style="color:#185FA5;">${c}</td>`:'<td></td>'; }
+  html += `<td style="color:#185FA5;">${grand}</td></tr></table></div>`;
+  box.innerHTML = html;
 }
 
 function updateSelSum() {
@@ -836,8 +884,9 @@ function updateSelSum() {
     names.push(p.name);
   });
   box.style.display = 'block';
-  box.innerHTML = `<strong>선택 ${checks.length}명</strong> (${names.join(', ')})<br>
-    합계 일수 <strong>${selDays}</strong> · 공수 <strong>${selWork.toFixed(1)}</strong>${selAmt?` · 노무비 <strong style="color:#c62828;">${selAmt.toLocaleString()}원</strong>`:''}`;
+  box.innerHTML = `<div style="font-weight:700;margin-bottom:4px;">선택 ${checks.length}명</div>
+    <div>일수 합계 <strong>${selDays}</strong>일 · 공수 합계 <strong>${selWork.toFixed(1)}</strong></div>
+    ${selAmt?`<div style="margin-top:2px;">노무비 합계 <strong style="color:#c62828;">${selAmt.toLocaleString()}원</strong></div>`:''}`;
 }
 
 function refreshAmount(pi) {
@@ -1144,6 +1193,14 @@ function filterWorkers() {
   renderWorkerList(filtered);
 }
 
+async function resetWorkerPw(id, name) {
+  if (!confirm(`${name}님의 비밀번호를 초기화할까요?\n(다음 조회 때 비밀번호를 새로 설정하게 돼요)`)) return;
+  try {
+    await db('PATCH', `workers?id=eq.${id}`, { password: null });
+    alert(`${name}님 비밀번호가 초기화됐어요.`);
+  } catch(e) { alert('오류: ' + e.message); }
+}
+
 function renderWorkerList(workers) {
   const body = document.getElementById('list-body');
   if (!workers || workers.length === 0) { body.innerHTML = '<div style="padding:1rem 0;color:#aaa;">검색 결과 없음</div>'; return; }
@@ -1158,6 +1215,7 @@ function renderWorkerList(workers) {
       </div>
       <div class="worker-detail" id="detail-w${idx}">
         <button class="btn primary" style="margin-top:0;padding:8px;font-size:13px;" onclick="loadWorkerHistory('${w.id}','w${idx}')">📋 전체 근무 이력 보기</button>
+        <button class="btn" style="margin-top:6px;padding:8px;font-size:13px;" onclick="resetWorkerPw('${w.id}','${(w.name||'').replace(/'/g,"\\'")}')">🔑 비밀번호 초기화</button>
         <div style="margin-top:8px;">
           <div class="detail-selects">
             <select id="ds-w${idx}" onchange="loadWorkerDetail('${w.id}','w${idx}')">
