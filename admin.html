@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>노무비 공수 조회</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
@@ -103,7 +104,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 <div class="container">
   <h1>⚒️ 노무비 공수 조회 <span style="font-size:13px;color:#185FA5;font-weight:400;">[관리자]</span></h1>
   <div style="text-align:center;margin-bottom:1rem;"><a href="labor-app.html" style="font-size:13px;color:#888;text-decoration:none;">→ 작업자용 페이지로</a></div>
-  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0627-G (이름고정·엑셀다운)</div>
+  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0627-H (색깔엑셀)</div>
   <div class="tab-bar">
     <div class="tab active" onclick="showTab('worker')">공수조회</div>
     <div class="tab" onclick="showTab('upload')">업로드</div>
@@ -826,33 +827,84 @@ function renderEditTable() {
   updateSelSum(); // 합계행 + 직종표 초기화
 }
 
-function exportEditExcel() {
+async function exportEditExcel() {
   if (!editData || !editData.list || !editData.list.length) { alert('먼저 현장·월을 선택해 명단을 불러오세요'); return; }
-  if (typeof XLSX === 'undefined') { alert('엑셀 모듈 로딩 중이에요. 잠시 후 다시 시도해주세요'); return; }
+  if (typeof ExcelJS === 'undefined') { alert('엑셀 모듈 로딩 중이에요. 잠시 후 다시 시도해주세요'); return; }
   const { site, month, list } = editData;
-  const W = 23;
-  const blank = () => new Array(W).fill('');
-  const aoa = [];
-  // 헤더 3줄 (업로드 파서가 1~3행은 건너뜀)
-  const r1 = blank(); r1[0]='번호'; r1[1]='직종'; r1[2]='성명'; r1[3]='핸드폰번호'; r1[4]='일당'; r1[5]='출 역 현 황'; r1[21]='공수'; r1[22]='일수';
-  const r2 = blank(); for (let d = 1; d <= 15; d++) r2[4 + d] = d;
-  const r3 = blank(); for (let d = 16; d <= 31; d++) r3[5 + (d - 16)] = d;
-  aoa.push(r1, r2, r3);
-  // 데이터: 한 사람당 윗줄/아랫줄 2행
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('노무비명세서');
+
+  const thin = { style:'thin', color:{argb:'FFD9D9D9'} };
+  const allBorder = { top:thin, left:thin, bottom:thin, right:thin };
+  const grayFill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF0F0F0'} };
+  const redFill  = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFFE0E6'} };
+  const blueFont = { color:{argb:'FF185FA5'}, bold:true };
+
+  // 헤더 3줄 (업로드 시 1~3행은 건너뜀)
+  ws.getCell(1,1).value='번호'; ws.getCell(1,2).value='직종'; ws.getCell(1,3).value='성명';
+  ws.getCell(1,4).value='핸드폰번호'; ws.getCell(1,5).value='일당'; ws.getCell(1,6).value='출 역 현 황';
+  ws.getCell(1,22).value='공수'; ws.getCell(1,23).value='일수';
+  for (let d=1; d<=15; d++) ws.getCell(2, 5+d).value = d;       // 윗줄 1~15
+  for (let d=16; d<=31; d++) ws.getCell(3, d-10).value = d;     // 아랫줄 16~31
+
+  let r = 4;
+  const dayTot = {}; let gWork = 0, gDays = 0;
   list.forEach(p => {
     const t = calcTotals(p.daily_work);
-    const top = blank(), bot = blank();
-    top[0] = p.seq || ''; top[1] = p.job || ''; top[2] = p.name || ''; top[4] = p.daily_wage || '';
-    for (let d = 1; d <= 15; d++) { const v = p.daily_work[String(d)]; if (v) top[4 + d] = v; }
-    top[21] = t.work; top[22] = t.days;
-    bot[3] = p.phone || '';
-    for (let d = 16; d <= 31; d++) { const v = p.daily_work[String(d)]; if (v) bot[5 + (d - 16)] = v; }
-    aoa.push(top, bot);
+    gWork += t.work; gDays += t.days;
+    const top = r, bot = r + 1;
+    ws.getCell(top,1).value = p.seq || null;
+    ws.getCell(top,2).value = p.job || '';
+    ws.getCell(top,3).value = p.name || '';
+    ws.getCell(top,5).value = p.daily_wage || null;
+    ws.getCell(bot,4).value = p.phone || '';
+    for (let d=1; d<=15; d++) { const v=p.daily_work[String(d)]; if(v){ ws.getCell(top,5+d).value=Number(v); dayTot[d]=(dayTot[d]||0)+Number(v); } }
+    for (let d=16; d<=31; d++) { const v=p.daily_work[String(d)]; if(v){ ws.getCell(bot,d-10).value=Number(v); dayTot[d]=(dayTot[d]||0)+Number(v); } }
+    ws.getCell(top,22).value = t.work;
+    ws.getCell(top,23).value = t.days;
+    ws.getCell(top,3).font = { bold:true };
+    ws.getCell(top,5).font = { color:{argb:'FFE65100'}, bold:true };
+    ws.getCell(top,22).font = blueFont;
+    ws.getCell(top,23).font = blueFont;
+    for (const d in p.red_days) {
+      if (!p.red_days[d]) continue;
+      const dd = parseInt(d);
+      const cell = dd <= 15 ? ws.getCell(top, 5+dd) : ws.getCell(bot, dd-10);
+      cell.fill = redFill; cell.font = { color:{argb:'FFD32F2F'}, bold:true };
+    }
+    r += 2;
   });
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '노무비명세서');
-  XLSX.writeFile(wb, `노무비_${site}_${month}.xlsx`);
+
+  // 합계 줄 (번호가 비어 있어 재업로드 시 자동 무시됨)
+  const sumRow = r;
+  ws.getCell(sumRow,3).value = '합계';
+  for (let d=1; d<=15; d++) { if (dayTot[d]) { const c=ws.getCell(sumRow,5+d); c.value=dayTot[d]; c.font=blueFont; } }
+  ws.getCell(sumRow,22).value = gWork; ws.getCell(sumRow,22).font = blueFont;
+  ws.getCell(sumRow,23).value = gDays; ws.getCell(sumRow,23).font = blueFont;
+
+  // 공통 서식: 테두리·정렬, 헤더/합계 회색
+  for (let row=1; row<=sumRow; row++) {
+    for (let col=1; col<=23; col++) {
+      const cell = ws.getCell(row,col);
+      cell.border = allBorder;
+      cell.alignment = { horizontal: col===3 ? 'left' : 'center', vertical:'middle' };
+      if (row<=3 || row===sumRow) {
+        cell.fill = grayFill;
+        if (row<=3) cell.font = Object.assign({bold:true}, cell.font);
+      }
+    }
+  }
+  const widths = [5,8,9,13,9]; for (let i=6;i<=21;i++) widths[i-1]=4; widths[21]=6; widths[22]=6;
+  ws.columns.forEach((c,i)=>{ c.width = widths[i] || 4; });
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `노무비_${site}_${month}.xlsx`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
 }
 
 function edToggleAll() {
