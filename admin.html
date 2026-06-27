@@ -100,7 +100,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 <div class="container">
   <h1>⚒️ 노무비 공수 조회 <span style="font-size:13px;color:#185FA5;font-weight:400;">[관리자]</span></h1>
   <div style="text-align:center;margin-bottom:1rem;"><a href="labor-app.html" style="font-size:13px;color:#888;text-decoration:none;">→ 작업자용 페이지로</a></div>
-  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0627-일당표시</div>
+  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0627-B (범위·설정·명단)</div>
   <div class="tab-bar">
     <div class="tab active" onclick="showTab('worker')">공수조회</div>
     <div class="tab" onclick="showTab('upload')">업로드</div>
@@ -108,6 +108,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
     <div class="tab" onclick="showTab('list')">인원목록</div>
     <div class="tab" onclick="showTab('stats')">직종통계</div>
     <div class="tab" onclick="showTab('payslip')">명세서</div>
+    <div class="tab" onclick="showTab('settings')">설정</div>
   </div>
 
   <!-- 작업자 조회 -->
@@ -225,42 +226,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
         </div>
         <div class="card-body" id="body-sites" style="display:none;">
           <div id="site-list-body" style="font-size:14px;color:#888;">불러오는 중...</div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title collapsible-head" onclick="toggleCard('pass')">
-          <span>🔑 관리자 비밀번호 변경</span>
-          <span class="toggle-arrow" id="arrow-pass">▼ 펼치기</span>
-        </div>
-        <div class="card-body" id="body-pass" style="display:none;">
-          <label>현재 비밀번호</label>
-          <input type="password" id="cp-old" placeholder="현재 비밀번호">
-          <label>새 비밀번호</label>
-          <input type="password" id="cp-new" placeholder="새 비밀번호">
-          <label>새 비밀번호 확인</label>
-          <input type="password" id="cp-new2" placeholder="새 비밀번호 다시 입력">
-          <button class="btn primary" onclick="changePassword()">비밀번호 변경</button>
-          <div id="cp-msg" class="msg"></div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title collapsible-head" onclick="toggleCard('del')">
-          <span>🗑️ 현장별 데이터 삭제 <span style="color:#c62828;font-size:11px;font-weight:400;">(위험 · 복구불가)</span></span>
-          <span class="toggle-arrow" id="arrow-del">▼ 펼치기</span>
-        </div>
-        <div class="card-body" id="body-del" style="display:none;">
-          <label>현장 선택</label>
-          <select id="m-site" onchange="loadMonths()"><option value="">-- 현장 선택 --</option></select>
-          <label>월 선택</label>
-          <select id="m-month"><option value="">-- 월 선택 --</option></select>
-          <button class="btn" style="margin-top:1rem;" onclick="previewDelete()">조회하기</button>
-          <div id="m-preview" style="display:none; margin-top:1rem;">
-            <div style="background:#fdecea;border-radius:8px;padding:12px;font-size:13px;color:#c62828;margin-bottom:1rem;">
-              ⚠️ <strong id="m-count">0</strong>명의 데이터가 삭제됩니다. 복구 불가!
-            </div>
-            <button class="btn red" onclick="deleteData()">🗑️ 삭제하기</button>
-          </div>
-          <div id="m-msg" class="msg"></div>
+          <div id="site-roster" style="margin-top:1rem;"></div>
         </div>
       </div>
     </div>
@@ -349,6 +315,58 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
       </div>
     </div>
   </div>
+
+  <!-- 설정 -->
+  <div id="screen-settings" class="screen">
+    <div id="settings-lock" class="admin-lock">
+      <div class="lock-icon">🔒</div>
+      <p>관리자 전용 메뉴입니다</p>
+      <input type="password" id="aset-pass" placeholder="관리자 비밀번호" style="margin-bottom:0;">
+      <button class="btn primary" onclick="adminUnlock('settings')">확인</button>
+      <div id="aset-msg" class="msg"></div>
+    </div>
+    <div id="settings-content" style="display:none;">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:0.75rem;">
+        <button class="lock-btn" onclick="adminLock()">🔒 잠금</button>
+      </div>
+      <div class="card">
+        <div class="card-title collapsible-head" onclick="toggleCard('pass')">
+          <span>🔑 관리자 비밀번호 변경</span>
+          <span class="toggle-arrow" id="arrow-pass">▼ 펼치기</span>
+        </div>
+        <div class="card-body" id="body-pass" style="display:none;">
+          <label>현재 비밀번호</label>
+          <input type="password" id="cp-old" placeholder="현재 비밀번호">
+          <label>새 비밀번호</label>
+          <input type="password" id="cp-new" placeholder="새 비밀번호">
+          <label>새 비밀번호 확인</label>
+          <input type="password" id="cp-new2" placeholder="새 비밀번호 다시 입력">
+          <button class="btn primary" onclick="changePassword()">비밀번호 변경</button>
+          <div id="cp-msg" class="msg"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title collapsible-head" onclick="toggleCard('del')">
+          <span>🗑️ 현장별 데이터 삭제 <span style="color:#c62828;font-size:11px;font-weight:400;">(위험 · 복구불가)</span></span>
+          <span class="toggle-arrow" id="arrow-del">▼ 펼치기</span>
+        </div>
+        <div class="card-body" id="body-del" style="display:none;">
+          <label>현장 선택</label>
+          <select id="m-site" onchange="loadMonths()"><option value="">-- 현장 선택 --</option></select>
+          <label>월 선택</label>
+          <select id="m-month"><option value="">-- 월 선택 --</option></select>
+          <button class="btn" style="margin-top:1rem;" onclick="previewDelete()">조회하기</button>
+          <div id="m-preview" style="display:none; margin-top:1rem;">
+            <div style="background:#fdecea;border-radius:8px;padding:12px;font-size:13px;color:#c62828;margin-bottom:1rem;">
+              ⚠️ <strong id="m-count">0</strong>명의 데이터가 삭제됩니다. 복구 불가!
+            </div>
+            <button class="btn red" onclick="deleteData()">🗑️ 삭제하기</button>
+          </div>
+          <div id="m-msg" class="msg"></div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -387,8 +405,8 @@ function showMsg(id, text, type) {
 }
 
 function adminUnlock(tab) {
-  const passMap = { upload:'al-pass', manage:'am-pass', list:'alist-pass', stats:'astats-pass', payslip:'apay-pass' };
-  const msgMap  = { upload:'al-msg',  manage:'am-msg',  list:'alist-msg',  stats:'astats-msg', payslip:'apay-msg' };
+  const passMap = { upload:'al-pass', manage:'am-pass', list:'alist-pass', stats:'astats-pass', payslip:'apay-pass', settings:'aset-pass' };
+  const msgMap  = { upload:'al-msg',  manage:'am-msg',  list:'alist-msg',  stats:'astats-msg', payslip:'apay-msg', settings:'aset-msg' };
   const input = document.getElementById(passMap[tab]);
   if (input.value !== getAdminPass()) {
     showMsg(msgMap[tab], '비밀번호가 틀렸어요', 'error');
@@ -396,7 +414,7 @@ function adminUnlock(tab) {
   }
   // 한 번 풀면 모든 탭 해제
   window._adminUnlocked = true;
-  ['upload','manage','list','stats','payslip'].forEach(t => {
+  ['upload','manage','list','stats','payslip','settings'].forEach(t => {
     const lk = document.getElementById(`${t}-lock`);
     const ct = document.getElementById(`${t}-content`);
     if (lk) lk.style.display = 'none';
@@ -407,12 +425,13 @@ function adminUnlock(tab) {
   if (tab === 'list') loadList();
   if (tab === 'stats') loadStatSites();
   if (tab === 'payslip') loadPaySlipSites();
+  if (tab === 'settings') loadManageSites();
   loadUploadSites();
   revealWorkerAdminBox();
 }
 
 function adminLock() {
-  ['upload','manage','list','stats','payslip'].forEach(tab => {
+  ['upload','manage','list','stats','payslip','settings'].forEach(tab => {
     const lock = document.getElementById(`${tab}-lock`);
     const content = document.getElementById(`${tab}-content`);
     if (lock) lock.style.display = 'block';
@@ -562,7 +581,7 @@ function changePassword() {
 }
 
 function showTab(tab) {
-  ['worker','upload','manage','list','stats','payslip'].forEach((t,i) => {
+  ['worker','upload','manage','list','stats','payslip','settings'].forEach((t,i) => {
     document.querySelectorAll('.tab')[i].classList.toggle('active', t === tab);
     document.getElementById('screen-' + t).classList.toggle('active', t === tab);
   });
@@ -578,6 +597,7 @@ function showTab(tab) {
     if (tab === 'stats') loadStatSites();
     if (tab === 'payslip') loadPaySlipSites();
     if (tab === 'upload') loadUploadSites();
+    if (tab === 'settings') loadManageSites();
   }
 }
 
@@ -608,8 +628,49 @@ async function loadManageSites() {
     });
     const body = document.getElementById('site-list-body');
     body.innerHTML = sites.length === 0 ? '<div style="color:#aaa;padding:1rem 0;">데이터 없음</div>' :
-      sites.map(s => `<div class="site-manage-row"><div><div style="font-size:14px;font-weight:600;">${s}</div><div style="font-size:12px;color:#999;">${[...siteMonths[s]].sort().join(', ')}</div></div></div>`).join('');
+      sites.map(s => {
+        const months = [...siteMonths[s]].sort().reverse();
+        const sEsc = s.replace(/'/g, "\\'");
+        const chips = months.map(m => `<span onclick="loadSiteRoster('${sEsc}','${m}')" style="display:inline-block;cursor:pointer;background:#e3f2fd;color:#1565c0;font-size:12px;font-weight:600;padding:5px 10px;border-radius:16px;margin:3px 4px 0 0;">${m}</span>`).join('');
+        return `<div class="site-manage-row"><div style="width:100%;"><div style="font-size:14px;font-weight:600;margin-bottom:2px;">${s}</div><div>${chips}</div></div></div>`;
+      }).join('');
   } catch(e) {}
+}
+
+async function loadSiteRoster(site, month) {
+  const box = document.getElementById('site-roster');
+  if (!box) return;
+  box.innerHTML = '<div style="font-size:13px;color:#999;padding:8px 0;">불러오는 중...</div>';
+  try {
+    let records;
+    try {
+      records = await db('GET', 'work_records', null, `site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=worker_id,seq_no,daily_wage,total_days,total_work`);
+    } catch(err) {
+      records = await db('GET', 'work_records', null, `site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=worker_id,total_days,total_work`);
+    }
+    const workers = await db('GET', 'workers', null, 'select=id,name,job_type,phone');
+    const wMap = {}; workers.forEach(w => wMap[w.id] = w);
+    const list = records.map(r => ({ ...r, w: wMap[r.worker_id] || {name:'?',job_type:'',phone:''} }))
+      .sort((a,b) => ((a.seq_no==null?9999:a.seq_no)) - ((b.seq_no==null?9999:b.seq_no)));
+    if (list.length === 0) { box.innerHTML = '<div style="color:#999;font-size:13px;">데이터 없음</div>'; return; }
+
+    let grandWork = 0, grandAmt = 0;
+    let html = `<div style="font-size:14px;font-weight:700;color:#185FA5;margin-bottom:8px;">${site} · ${month} <span style="color:#999;font-weight:400;font-size:12px;">(${list.length}명)</span></div>`;
+    html += '<div style="overflow-x:auto;"><table class="preview-table"><tr><th>번호</th><th>직종</th><th>성명</th><th>일당</th><th>일수</th><th>공수</th><th>노무비</th></tr>';
+    list.forEach(it => {
+      const wage = parseInt(it.daily_wage) || 0;
+      const work = parseFloat(it.total_work) || 0;
+      const amt = wage * work;
+      grandWork += work; grandAmt += amt;
+      html += `<tr><td>${it.seq_no||''}</td><td>${it.w.job_type||''}</td><td>${it.w.name}</td>`
+        + `<td style="color:${wage?'#e65100':'#bbb'};font-weight:600;">${wage?wage.toLocaleString():'미입력'}</td>`
+        + `<td>${it.total_days||0}</td><td>${work.toFixed(1)}</td>`
+        + `<td style="color:#c62828;font-weight:600;">${amt?amt.toLocaleString():''}</td></tr>`;
+    });
+    html += `<tr style="background:#f0f0f0;font-weight:700;"><td colspan="5">합계</td><td style="color:#185FA5;">${grandWork.toFixed(1)}</td><td style="color:#c62828;">${grandAmt?grandAmt.toLocaleString():''}</td></tr>`;
+    html += '</table></div>';
+    box.innerHTML = html;
+  } catch(e) { box.innerHTML = `<div style="color:#c62828;font-size:13px;">${e.message}</div>`; }
 }
 
 async function loadMonths() {
