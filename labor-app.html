@@ -87,12 +87,18 @@ function showMsg(id, text, type) {
   el.textContent = text;
 }
 
-// 관리자가 정한 이력 표시 모드 ('all' = 전체, 'recent' = 최근 월만)
+// 관리자가 정한 이력 표시 범위 ('all' = 전체, 'period' = 특정 현장·월)
 let _histMode = 'all';
-async function loadHistMode() {
+let _histSite = '';
+let _histMonth = '';
+async function loadHistSettings() {
   try {
-    const rows = await db('GET', 'app_settings', null, 'key=eq.worker_hist_mode&select=value');
-    if (rows && rows.length) _histMode = rows[0].value || 'all';
+    const rows = await db('GET', 'app_settings', null, 'key=in.(worker_hist_mode,worker_hist_site,worker_hist_month)&select=key,value');
+    if (rows) rows.forEach(r => {
+      if (r.key === 'worker_hist_mode') _histMode = r.value || 'all';
+      if (r.key === 'worker_hist_site') _histSite = r.value || '';
+      if (r.key === 'worker_hist_month') _histMonth = r.value || '';
+    });
   } catch(e) { _histMode = 'all'; }
 }
 
@@ -101,14 +107,17 @@ async function workerLogin() {
   const phone = normalizePhone(document.getElementById('w-phone').value);
   if (!name || !phone) return showMsg('w-msg','이름과 핸드폰번호를 입력해주세요','error');
   try {
-    await loadHistMode(); // 최신 설정 반영
+    await loadHistSettings(); // 최신 설정 반영
     const workers = await db('GET', 'workers', null, `name=eq.${encodeURIComponent(name)}&phone=eq.${phone}&select=id,name,job_type`);
     if (!workers || workers.length === 0) return showMsg('w-msg','이름 또는 핸드폰번호가 틀렸어요','error');
     const worker = workers[0];
     let records = await db('GET', 'work_records', null, `worker_id=eq.${worker.id}&select=daily_work,total_days,total_work,site_name,year_month,red_days&order=year_month.desc`);
     if (!records || records.length === 0) return showMsg('w-msg','근무 기록이 없어요','error');
     document.getElementById('w-msg').className = 'msg';
-    if (_histMode === 'recent') records = records.slice(0, 1);
+    if (_histMode === 'period') {
+      records = records.filter(r => (!_histSite || r.site_name === _histSite) && (!_histMonth || r.year_month === _histMonth));
+    }
+    if (records.length === 0) return showMsg('w-msg','조회 가능한 기록이 없어요','error');
     renderWorkerResult(worker, records);
   } catch(e) { showMsg('w-msg', e.message, 'error'); }
 }
@@ -118,7 +127,7 @@ function renderWorkerResult(worker, records) {
   let html = `<div class="card">
     <div class="card-title">${worker.name}님의 공수</div>
     ${worker.job_type ? `<div><span class="badge-job">${worker.job_type}</span></div>` : ''}
-    <div style="font-size:14px;color:#999;margin-top:4px;">총 ${records.length}개월 기록${_histMode==='recent'?' (최근 월)':''}</div>
+    <div style="font-size:14px;color:#999;margin-top:4px;">총 ${records.length}개월 기록</div>
   </div>`;
   records.forEach((rec, i) => {
     html += `<div class="card">
@@ -161,7 +170,7 @@ function renderDayTable(tableId, daily_work, month, red_days) {
   document.getElementById(tableId).innerHTML = header + row + '</tr>';
 }
 
-loadHistMode();
+loadHistSettings();
 </script>
 </body>
 </html>
