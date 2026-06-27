@@ -100,6 +100,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 <div class="container">
   <h1>⚒️ 노무비 공수 조회 <span style="font-size:13px;color:#185FA5;font-weight:400;">[관리자]</span></h1>
   <div style="text-align:center;margin-bottom:1rem;"><a href="labor-app.html" style="font-size:13px;color:#888;text-decoration:none;">→ 작업자용 페이지로</a></div>
+  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0627-일당표시</div>
   <div class="tab-bar">
     <div class="tab active" onclick="showTab('worker')">공수조회</div>
     <div class="tab" onclick="showTab('upload')">업로드</div>
@@ -111,13 +112,28 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 
   <!-- 작업자 조회 -->
   <div id="screen-worker" class="screen active">
-    <div class="card">
-      <div class="card-title">작업자 이력 표시 <span style="font-weight:400;color:#999;font-size:12px;">· 관리자 설정</span></div>
-      <select id="w-hist-mode" onchange="setHistoryMode(this.value)">
-        <option value="all">전체 근무 이력 보여주기</option>
-        <option value="recent">최근 월만 보여주기</option>
-      </select>
+    <!-- 관리자 전용: 잠금 해제했을 때만 보임 (작업자에게는 안 보임) -->
+    <div id="worker-admin-box" style="display:none;">
+      <div class="card">
+        <div class="card-title">⚙️ 작업자 이력 표시 <span style="font-weight:400;color:#999;font-size:12px;">· 관리자 전용</span></div>
+        <label>작업자가 조회할 때 보이는 범위</label>
+        <select id="w-hist-mode" onchange="setHistoryMode(this.value)">
+          <option value="all">전체 근무 이력 보여주기</option>
+          <option value="recent">최근 월만 보여주기</option>
+        </select>
+        <div style="border-top:1px solid #eee;margin:1.2rem 0 0;"></div>
+        <div class="card-title" style="font-size:14px;margin:1rem 0 0.3rem;">특정 현장·월 직접 조회 <span style="font-weight:400;color:#999;font-size:12px;">· 작업자에게 보여줄 때</span></div>
+        <label>현장 선택</label>
+        <select id="aw-site" onchange="loadAdminWorkerMonths()"><option value="">-- 현장 선택 --</option></select>
+        <label>월 선택</label>
+        <select id="aw-month"><option value="">-- 월 선택 --</option></select>
+        <label>작업자 이름</label>
+        <input type="text" id="aw-name" placeholder="홍길동">
+        <button class="btn primary" onclick="adminWorkerLookup()">선택 조회</button>
+        <div id="aw-msg" class="msg"></div>
+      </div>
     </div>
+    <!-- 작업자용 (공개) -->
     <div class="card">
       <div class="card-title">본인 공수 조회</div>
       <label>이름</label>
@@ -390,6 +406,7 @@ function adminUnlock(tab) {
   if (tab === 'list') loadList();
   if (tab === 'stats') loadStatSites();
   if (tab === 'payslip') loadPaySlipSites();
+  revealWorkerAdminBox();
 }
 
 function adminLock() {
@@ -399,6 +416,59 @@ function adminLock() {
     if (lock) lock.style.display = 'block';
     if (content) content.style.display = 'none';
   });
+  window._adminUnlocked = false;
+  const box = document.getElementById('worker-admin-box');
+  if (box) box.style.display = 'none';
+}
+
+function revealWorkerAdminBox() {
+  const box = document.getElementById('worker-admin-box');
+  if (!box) return;
+  box.style.display = window._adminUnlocked ? 'block' : 'none';
+  if (window._adminUnlocked) loadAdminWorkerSites();
+}
+
+async function loadAdminWorkerSites() {
+  const sel = document.getElementById('aw-site');
+  if (!sel) return;
+  try {
+    const data = await db('GET', 'work_records', null, 'select=site_name');
+    const sites = [...new Set(data.map(d => d.site_name))].sort();
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">-- 현장 선택 --</option>';
+    sites.forEach(s => sel.innerHTML += `<option value="${s}">${s}</option>`);
+    if (cur) sel.value = cur;
+  } catch(e) {}
+}
+
+async function loadAdminWorkerMonths() {
+  const site = document.getElementById('aw-site').value;
+  const sel = document.getElementById('aw-month');
+  sel.innerHTML = '<option value="">-- 월 선택 --</option>';
+  if (!site) return;
+  try {
+    const data = await db('GET', 'work_records', null, `site_name=eq.${encodeURIComponent(site)}&select=year_month`);
+    [...new Set(data.map(d => d.year_month))].sort().reverse().forEach(m => sel.innerHTML += `<option value="${m}">${m}</option>`);
+  } catch(e) {}
+}
+
+async function adminWorkerLookup() {
+  const site = document.getElementById('aw-site').value;
+  const month = document.getElementById('aw-month').value;
+  const name = document.getElementById('aw-name').value.trim();
+  if (!site || !month || !name) return showMsg('aw-msg', '현장·월·이름을 모두 선택/입력해주세요', 'error');
+  try {
+    const workers = await db('GET', 'workers', null, `name=eq.${encodeURIComponent(name)}&select=id,name,job_type`);
+    if (!workers || workers.length === 0) return showMsg('aw-msg', '그 이름의 작업자가 없어요', 'error');
+    let found = null, rec = null;
+    for (const w of workers) {
+      const recs = await db('GET', 'work_records', null, `worker_id=eq.${w.id}&site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=daily_work,total_days,total_work,site_name,year_month,red_days`);
+      if (recs && recs.length) { found = w; rec = recs[0]; break; }
+    }
+    if (!rec) return showMsg('aw-msg', '해당 현장·월에 그 작업자 기록이 없어요', 'error');
+    document.getElementById('aw-msg').className = 'msg';
+    renderWorkerResult(found, [rec]);
+  } catch(e) { showMsg('aw-msg', e.message, 'error'); }
 }
 
 function toggleCard(key) {
@@ -410,10 +480,24 @@ function toggleCard(key) {
   if (arrow) arrow.textContent = isOpen ? '▼ 펼치기' : '▲ 접기';
 }
 
-// 작업자 이력 표시 모드 (전체 / 최근월)
+// 작업자 이력 표시 모드 (전체 / 최근월) — DB(app_settings)에 저장해서 작업자 폰에도 반영
 const HIST_MODE_KEY = 'worker_hist_mode';
-function getHistoryMode() { return localStorage.getItem(HIST_MODE_KEY) || 'all'; }
-function setHistoryMode(v) { localStorage.setItem(HIST_MODE_KEY, v); }
+let _histMode = localStorage.getItem(HIST_MODE_KEY) || 'all';
+function getHistoryMode() { return _histMode; }
+async function setHistoryMode(v) {
+  _histMode = v;
+  localStorage.setItem(HIST_MODE_KEY, v);
+  try { await db('PATCH', `app_settings?key=eq.worker_hist_mode`, { value: v }); }
+  catch(e) { console.warn('설정 DB 저장 실패(작업자 폰 동기화 안 될 수 있음):', e.message); }
+}
+async function loadHistModeFromDB() {
+  try {
+    const rows = await db('GET', 'app_settings', null, 'key=eq.worker_hist_mode&select=value');
+    if (rows && rows.length) { _histMode = rows[0].value || 'all'; localStorage.setItem(HIST_MODE_KEY, _histMode); }
+  } catch(e) {}
+  const sel = document.getElementById('w-hist-mode');
+  if (sel) sel.value = _histMode;
+}
 
 function changePassword() {
   const oldP = document.getElementById('cp-old').value;
@@ -434,7 +518,7 @@ function showTab(tab) {
     document.querySelectorAll('.tab')[i].classList.toggle('active', t === tab);
     document.getElementById('screen-' + t).classList.toggle('active', t === tab);
   });
-  if (tab === 'worker') loadSites();
+  if (tab === 'worker') { loadSites(); revealWorkerAdminBox(); }
   // 이미 잠금 해제됐으면 해당 탭도 바로 열기
   if (window._adminUnlocked) {
     const lk = document.getElementById(`${tab}-lock`);
@@ -732,7 +816,7 @@ function renderWorkerResult(worker, records) {
   let html = `<div class="card">
     <div class="card-title">${worker.name}님의 공수</div>
     ${worker.job_type ? `<div><span class="badge-job">${worker.job_type}</span></div>` : ''}
-    <div style="font-size:12px;color:#999;margin-top:4px;">총 ${records.length}개월 기록${getHistoryMode()==='recent'?' (최근 월)':''}</div>
+    <div style="font-size:12px;color:#999;margin-top:4px;">총 ${records.length}개월 기록</div>
   </div>`;
   records.forEach((rec, i) => {
     html += `<div class="card">
@@ -1006,9 +1090,9 @@ async function loadWorkerHistory(workerId, idx) {
           <div class="history-stats">
             <span>일수 <strong style="color:#185FA5;">${r.total_days}</strong></span>
             <span>공수 <strong style="color:#185FA5;">${parseFloat(r.total_work).toFixed(1)}</strong></span>
-            ${wage ? `<span>일당 <strong style="color:#e65100;">${wage.toLocaleString()}</strong></span>` : ''}
+            <span>일당 <strong style="color:${wage?'#e65100':'#bbb'};">${wage ? wage.toLocaleString() : '미입력'}</strong></span>
           </div>
-          ${amount ? `<div style="font-size:13px;margin-top:6px;padding-top:6px;border-top:1px dashed #ddd;">노무비 <strong style="color:#c62828;font-size:15px;">${amount.toLocaleString()}원</strong></div>` : ''}
+          ${wage ? `<div style="font-size:13px;margin-top:6px;padding-top:6px;border-top:1px dashed #ddd;">노무비 <strong style="color:#c62828;font-size:15px;">${amount.toLocaleString()}원</strong></div>` : ''}
         </div>`;
       }).join('')}`;
   } catch(e) { dataDiv.innerHTML = `<div style="color:#c62828;font-size:13px;">${e.message}</div>`; }
@@ -1031,7 +1115,7 @@ async function loadWorkerDetail(workerId, idx) {
       <div style="display:flex;gap:12px;margin:8px 0;flex-wrap:wrap;">
         <div style="font-size:13px;"><span style="color:#888;">일수</span> <strong style="color:#185FA5;">${rec.total_days}</strong></div>
         <div style="font-size:13px;"><span style="color:#888;">공수</span> <strong style="color:#185FA5;">${parseFloat(rec.total_work).toFixed(1)}</strong></div>
-        ${rec.daily_wage ? `<div style="font-size:13px;"><span style="color:#888;">일당</span> <strong style="color:#e65100;">${parseInt(rec.daily_wage).toLocaleString()}</strong></div><div style="font-size:13px;"><span style="color:#888;">노무비</span> <strong style="color:#c62828;">${(parseInt(rec.daily_wage)*parseFloat(rec.total_work||0)).toLocaleString()}원</strong></div>` : ''}
+        ${rec.daily_wage ? `<div style="font-size:13px;"><span style="color:#888;">일당</span> <strong style="color:#e65100;">${parseInt(rec.daily_wage).toLocaleString()}</strong></div><div style="font-size:13px;"><span style="color:#888;">노무비</span> <strong style="color:#c62828;">${(parseInt(rec.daily_wage)*parseFloat(rec.total_work||0)).toLocaleString()}원</strong></div>` : `<div style="font-size:13px;"><span style="color:#888;">일당</span> <strong style="color:#bbb;">미입력</strong></div>`}
       </div>
       <div style="font-size:12px;color:#e65100;background:#fff3e0;padding:8px 10px;border-radius:8px;margin-bottom:8px;">
         💡 공수 칸을 <strong>클릭</strong>하면 빨간색(특이사항)으로 표시돼요. 다시 누르면 해제!
@@ -1392,8 +1476,7 @@ function getPaySlipStyle() {
 const now = new Date();
 const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
 document.getElementById('u-month').value = ym;
-const histSel = document.getElementById('w-hist-mode');
-if (histSel) histSel.value = getHistoryMode();
+loadHistModeFromDB();
 loadSites();
 </script>
 </body>
