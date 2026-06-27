@@ -100,7 +100,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 <div class="container">
   <h1>⚒️ 노무비 공수 조회 <span style="font-size:13px;color:#185FA5;font-weight:400;">[관리자]</span></h1>
   <div style="text-align:center;margin-bottom:1rem;"><a href="labor-app.html" style="font-size:13px;color:#888;text-decoration:none;">→ 작업자용 페이지로</a></div>
-  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0627-D (회원가입)</div>
+  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0627-E (선택합계·차단)</div>
   <div class="tab-bar">
     <div class="tab active" onclick="showTab('worker')">공수조회</div>
     <div class="tab" onclick="showTab('upload')">업로드</div>
@@ -807,11 +807,11 @@ function renderEditTable() {
       if (v > 0) dayTotals[d] = (dayTotals[d] || 0) + v;
     }
   });
-  html += '<tr style="background:#f0f0f0;font-weight:700;"><td class="sticky-col">합계</td><td></td><td></td><td></td><td></td>';
+  html += '<tr style="background:#f0f0f0;font-weight:700;"><td class="sticky-col" id="ed-total-label">합계</td><td></td><td></td><td></td><td></td>';
   for (let d = 1; d <= daysInMonth; d++) {
-    html += dayTotals[d] ? `<td style="color:#185FA5;font-size:11px;">${dayTotals[d].toFixed(1)}</td>` : '<td></td>';
+    html += `<td id="ed-dtot-${d}" style="color:#185FA5;font-size:11px;">${dayTotals[d]?dayTotals[d].toFixed(1):''}</td>`;
   }
-  html += `<td style="color:#185FA5;">${grandDays}</td><td style="color:#185FA5;">${grandWork.toFixed(1)}</td><td style="color:#c62828;white-space:nowrap;">${grandAmt?grandAmt.toLocaleString():''}</td></tr>`;
+  html += `<td id="ed-gdays" style="color:#185FA5;">${grandDays}</td><td id="ed-gwork" style="color:#185FA5;">${grandWork.toFixed(1)}</td><td id="ed-gamt" style="color:#c62828;white-space:nowrap;">${grandAmt?grandAmt.toLocaleString():''}</td></tr>`;
   html += '</table></div>';
 
   // 선택 합계 박스
@@ -820,7 +820,7 @@ function renderEditTable() {
     <div id="ed-msg" class="msg"></div>`;
   html += `<div id="ed-jobday" style="margin-top:1.2rem;"></div>`;
   document.getElementById('ed-result').innerHTML = html;
-  renderJobDaySummary();
+  updateSelSum(); // 합계행 + 직종표 초기화
 }
 
 function edCheckAll(on) {
@@ -828,11 +828,12 @@ function edCheckAll(on) {
   updateSelSum();
 }
 
-function renderJobDaySummary() {
+function renderJobDaySummary(listArg) {
   if (!editData) return;
   const box = document.getElementById('ed-jobday');
   if (!box) return;
-  const { month, list } = editData;
+  const { month } = editData;
+  const list = listArg || editData.list;
   const [yr, mo] = month.split('-').map(Number);
   const daysInMonth = new Date(yr, mo, 0).getDate();
   // jobDay[job][day] = 인원수
@@ -871,22 +872,46 @@ function renderJobDaySummary() {
 }
 
 function updateSelSum() {
-  const checks = document.querySelectorAll('.ed-check:checked');
-  const box = document.getElementById('ed-sel-sum');
-  if (checks.length === 0) { box.style.display = 'none'; return; }
-  let selDays = 0, selWork = 0, selAmt = 0;
-  const names = [];
-  checks.forEach(c => {
-    const p = editData.list[parseInt(c.dataset.pi)];
+  if (!editData) return;
+  const { month, list } = editData;
+  const [yr, mo] = month.split('-').map(Number);
+  const daysInMonth = new Date(yr, mo, 0).getDate();
+  const checks = [...document.querySelectorAll('.ed-check:checked')];
+  const selected = checks.length > 0;
+  const active = selected ? checks.map(c => list[parseInt(c.dataset.pi)]) : list;
+
+  // 일별 합계 + 전체 합계 (선택된 사람 기준, 미선택이면 전체)
+  let gDays = 0, gWork = 0, gAmt = 0; const dayTot = {};
+  active.forEach(p => {
     const t = calcTotals(p.daily_work);
-    selDays += t.days; selWork += t.work;
-    selAmt += (p.daily_wage||0) * t.work;
-    names.push(p.name);
+    gDays += t.days; gWork += t.work; gAmt += (p.daily_wage||0) * t.work;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const v = parseFloat(p.daily_work[String(d)]) || 0;
+      if (v > 0) dayTot[d] = (dayTot[d] || 0) + v;
+    }
   });
-  box.style.display = 'block';
-  box.innerHTML = `<div style="font-weight:700;margin-bottom:4px;">선택 ${checks.length}명</div>
-    <div>일수 합계 <strong>${selDays}</strong>일 · 공수 합계 <strong>${selWork.toFixed(1)}</strong></div>
-    ${selAmt?`<div style="margin-top:2px;">노무비 합계 <strong style="color:#c62828;">${selAmt.toLocaleString()}원</strong></div>`:''}`;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const el = document.getElementById(`ed-dtot-${d}`);
+    if (el) el.textContent = dayTot[d] ? dayTot[d].toFixed(1) : '';
+  }
+  const gd = document.getElementById('ed-gdays'); if (gd) gd.textContent = gDays;
+  const gw = document.getElementById('ed-gwork'); if (gw) gw.textContent = gWork.toFixed(1);
+  const ga = document.getElementById('ed-gamt'); if (ga) ga.textContent = gAmt ? gAmt.toLocaleString() : '';
+  const lbl = document.getElementById('ed-total-label'); if (lbl) lbl.textContent = selected ? `선택 ${checks.length}명` : '합계';
+
+  // 선택 합계 박스
+  const box = document.getElementById('ed-sel-sum');
+  if (box) {
+    if (selected) {
+      box.style.display = 'block';
+      box.innerHTML = `<div style="font-weight:700;margin-bottom:4px;">선택 ${checks.length}명</div>
+        <div>일수 합계 <strong>${gDays}</strong>일 · 공수 합계 <strong>${gWork.toFixed(1)}</strong></div>
+        ${gAmt?`<div style="margin-top:2px;">노무비 합계 <strong style="color:#c62828;">${gAmt.toLocaleString()}원</strong></div>`:''}`;
+    } else { box.style.display = 'none'; }
+  }
+
+  // 직종별 일별 인원수 (선택 기준)
+  renderJobDaySummary(active);
 }
 
 function refreshAmount(pi) {
