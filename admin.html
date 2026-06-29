@@ -104,13 +104,12 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 <div class="container">
   <h1>⚒️ 노무비 공수 조회 <span style="font-size:13px;color:#185FA5;font-weight:400;">[관리자]</span></h1>
   <div style="text-align:center;margin-bottom:1rem;"><a href="labor-app.html" style="font-size:13px;color:#888;text-decoration:none;">→ 작업자용 페이지로</a></div>
-  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0627-I (잠금저장)</div>
+  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0628-A (합계·현장명)</div>
   <div class="tab-bar">
     <div class="tab active" onclick="showTab('worker')">공수조회</div>
     <div class="tab" onclick="showTab('upload')">업로드</div>
     <div class="tab" onclick="showTab('manage')">관리</div>
     <div class="tab" onclick="showTab('list')">인원목록</div>
-    <div class="tab" onclick="showTab('stats')">직종통계</div>
     <div class="tab" onclick="showTab('payslip')">명세서</div>
     <div class="tab" onclick="showTab('settings')">설정</div>
   </div>
@@ -340,6 +339,21 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
           <input type="password" id="cp-new2" placeholder="새 비밀번호 다시 입력">
           <button class="btn primary" onclick="changePassword()">비밀번호 변경</button>
           <div id="cp-msg" class="msg"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title collapsible-head" onclick="toggleCard('rn')">
+          <span>🏷️ 현장 명칭 변경</span>
+          <span class="toggle-arrow" id="arrow-rn">▼ 펼치기</span>
+        </div>
+        <div class="card-body" id="body-rn" style="display:none;">
+          <label>변경할 현장</label>
+          <select id="rn-site"><option value="">-- 현장 선택 --</option></select>
+          <label>새 현장 이름</label>
+          <input type="text" id="rn-new" placeholder="예: 인천청라001 정거장 수직구#1">
+          <button class="btn primary" onclick="renameSite()">현장 이름 변경</button>
+          <div id="rn-msg" class="msg"></div>
+          <div style="font-size:12px;color:#888;margin-top:8px;">이 현장의 모든 월·작업자 기록의 현장명이 한꺼번에 바뀌어요.</div>
         </div>
       </div>
       <div class="card">
@@ -579,8 +593,28 @@ function changePassword() {
   showMsg('cp-msg', '비밀번호가 변경됐어요!', 'success');
 }
 
+async function renameSite() {
+  const sel = document.getElementById('rn-site');
+  const oldName = sel.value;
+  const newName = document.getElementById('rn-new').value.trim();
+  if (!oldName) return showMsg('rn-msg','변경할 현장을 선택하세요','error');
+  if (!newName) return showMsg('rn-msg','새 현장 이름을 입력하세요','error');
+  if (newName === oldName) return showMsg('rn-msg','현재 이름과 같아요','error');
+  if (!confirm(`"${oldName}"\n→ "${newName}"\n\n이 현장의 모든 기록에 적용돼요. 변경할까요?`)) return;
+  try {
+    await db('PATCH', `work_records?site_name=eq.${encodeURIComponent(oldName)}`, { site_name: newName });
+    if (typeof _histSite !== 'undefined' && _histSite === oldName) {
+      _histSite = newName; try { await saveSetting('worker_hist_site', newName); } catch(_) {}
+    }
+    showMsg('rn-msg', `"${newName}" 으로 변경됐어요`, 'success');
+    document.getElementById('rn-new').value = '';
+    loadManageSites();
+  } catch(e) { showMsg('rn-msg', '변경 오류: ' + e.message, 'error'); }
+}
+
+async function renameSite_END() {}
 function showTab(tab) {
-  ['worker','upload','manage','list','stats','payslip','settings'].forEach((t,i) => {
+  ['worker','upload','manage','list','payslip','settings'].forEach((t,i) => {
     document.querySelectorAll('.tab')[i].classList.toggle('active', t === tab);
     document.getElementById('screen-' + t).classList.toggle('active', t === tab);
   });
@@ -593,7 +627,6 @@ function showTab(tab) {
     if (ct) ct.style.display = 'block';
     if (tab === 'manage') loadManageSites();
     if (tab === 'list') loadList();
-    if (tab === 'stats') loadStatSites();
     if (tab === 'payslip') loadPaySlipSites();
     if (tab === 'upload') loadUploadSites();
     if (tab === 'settings') loadManageSites();
@@ -620,6 +653,8 @@ async function loadManageSites() {
     sites.forEach(s => sel.innerHTML += `<option value="${s}">${s}</option>`);
     const edSel = document.getElementById('ed-site');
     if (edSel) { edSel.innerHTML = '<option value="">-- 현장 선택 --</option>'; sites.forEach(s => edSel.innerHTML += `<option value="${s}">${s}</option>`); }
+    const rnSel = document.getElementById('rn-site');
+    if (rnSel) { rnSel.innerHTML = '<option value="">-- 현장 선택 --</option>'; sites.forEach(s => rnSel.innerHTML += `<option value="${s}">${s}</option>`); }
     const siteMonths = {};
     data.forEach(d => {
       if (!siteMonths[d.site_name]) siteMonths[d.site_name] = new Set();
@@ -987,15 +1022,14 @@ function updateSelSum() {
   const ga = document.getElementById('ed-gamt'); if (ga) ga.textContent = gAmt ? gAmt.toLocaleString() : '';
   const lbl = document.getElementById('ed-total-label'); if (lbl) lbl.textContent = selected ? `선택 ${checks.length}명` : '합계';
 
-  // 선택 합계 박스
+  // 합계 박스: 항상 표시 (선택 없으면 전체 합계, 있으면 선택 합계)
   const box = document.getElementById('ed-sel-sum');
   if (box) {
-    if (selected) {
-      box.style.display = 'block';
-      box.innerHTML = `<div style="font-weight:700;margin-bottom:4px;">선택 ${checks.length}명</div>
-        <div>일수 합계 <strong>${gDays}</strong>일 · 공수 합계 <strong>${gWork.toFixed(1)}</strong></div>
-        ${gAmt?`<div style="margin-top:2px;">노무비 합계 <strong style="color:#c62828;">${gAmt.toLocaleString()}원</strong></div>`:''}`;
-    } else { box.style.display = 'none'; }
+    box.style.display = 'block';
+    const title = selected ? `선택 ${checks.length}명` : '전체 합계';
+    box.innerHTML = `<div style="font-weight:700;margin-bottom:4px;">${title}</div>
+      <div>일수 합계 <strong>${gDays}</strong>일 · 공수 합계 <strong>${gWork.toFixed(1)}</strong></div>
+      ${gAmt?`<div style="margin-top:2px;">노무비 합계 <strong style="color:#c62828;">${gAmt.toLocaleString()}원</strong></div>`:''}`;
   }
 
   // 직종별 일별 인원수 (선택 기준)
