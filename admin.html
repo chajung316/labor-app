@@ -46,9 +46,9 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 .edit-table { border-collapse: collapse; font-size: 13px; }
 .edit-table th { background: #f0f0f0; padding: 5px 3px; text-align: center; font-weight: 600; color: #555; border: 1px solid #e0e0e0; white-space: nowrap; }
 .edit-table td { padding: 0; text-align: center; border: 1px solid #e8e8e8; }
-.edit-table .edit-cell { background: #fff; }
+.edit-table .edit-cell { background: #fff; touch-action: manipulation; }
 .edit-table .edit-cell.red-cell { background: #ffebee; }
-.edit-table .edit-cell input { padding: 6px 2px; }
+.edit-table .edit-cell input { padding: 6px 2px; touch-action: manipulation; }
 .edit-table .sticky-col { position: sticky; left: 0; background: #fafafa; z-index: 1; min-width: 32px; width: 32px; padding: 5px 4px; }
 .edit-table th.sticky-col { z-index: 3; }
 .edit-table th:nth-child(2), .edit-table td:nth-child(2) { position: sticky; left: 32px; background: #fafafa; z-index: 1; min-width: 34px; width: 34px; }
@@ -104,7 +104,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 <div class="container">
   <h1>⚒️ 노무비 공수 조회 <span style="font-size:13px;color:#185FA5;font-weight:400;">[관리자]</span></h1>
   <div style="text-align:center;margin-bottom:1rem;"><a href="labor-app.html" style="font-size:13px;color:#888;text-decoration:none;">→ 작업자용 페이지로</a></div>
-  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0628-A (합계·현장명)</div>
+  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0628-B (빨강 더블탭)</div>
   <div class="tab-bar">
     <div class="tab active" onclick="showTab('worker')">공수조회</div>
     <div class="tab" onclick="showTab('upload')">업로드</div>
@@ -801,7 +801,7 @@ function renderEditTable() {
   const daysInMonth = new Date(yr, mo, 0).getDate();
 
   let html = `<div style="font-size:12px;color:#e65100;background:#fff3e0;padding:8px 10px;border-radius:8px;margin-bottom:8px;line-height:1.6;">
-    💡 공수 칸을 <strong>고쳐 쓰면 수정</strong>, 칸을 <strong>우클릭/길게 누르면</strong> 빨간색 표시.<br>
+    💡 공수 칸을 <strong>고쳐 쓰면 수정</strong>, 칸을 <strong>두 번 톡톡(또는 우클릭)</strong> 하면 빨간색 표시.<br>
     왼쪽 <strong>체크박스</strong>로 선택하면 아래에 선택 합계가 나와요. 수정 후 <strong>저장</strong> 필수!
   </div>`;
   html += `<div style="display:flex;gap:6px;margin-bottom:8px;">
@@ -824,9 +824,9 @@ function renderEditTable() {
       const key = String(d);
       const v = p.daily_work[key] || '';
       const isRed = p.red_days[key];
-      html += `<td class="edit-cell ${isRed?'red-cell':''}" 
+      html += `<td class="edit-cell ${isRed?'red-cell':''}" data-cell="${pi}-${d}"
         oncontextmenu="toggleEditRed(event,${pi},${d})" 
-        ontouchstart="handleTouch(event,${pi},${d})">
+        onclick="handleCellDouble(event,${pi},${d})">
         <input type="text" value="${v}" 
           oninput="updateCell(${pi},${d},this.value)" 
           style="width:34px;border:none;background:transparent;text-align:center;font-size:13px;${isRed?'color:#d32f2f;font-weight:700;':''}"></td>`;
@@ -1070,17 +1070,35 @@ function updateCell(pi, d, val) {
 }
 
 function toggleEditRed(e, pi, d) {
-  e.preventDefault();
+  if (e) e.preventDefault();
   const key = String(d);
   if (!editData.list[pi].daily_work[key]) return; // 값 있는 칸만
-  if (editData.list[pi].red_days[key]) delete editData.list[pi].red_days[key];
-  else editData.list[pi].red_days[key] = true;
-  renderEditTable();
+  const on = !editData.list[pi].red_days[key];
+  if (on) editData.list[pi].red_days[key] = true; else delete editData.list[pi].red_days[key];
+  // 표 전체가 아니라 해당 칸만 갱신 (스크롤·포커스 유지)
+  const cell = document.querySelector(`td[data-cell="${pi}-${d}"]`);
+  if (cell) {
+    cell.classList.toggle('red-cell', on);
+    const inp = cell.querySelector('input');
+    if (inp) { inp.style.color = on ? '#d32f2f' : ''; inp.style.fontWeight = on ? '700' : ''; if (on) inp.blur(); }
+  }
+}
+
+// 모바일: 같은 칸을 빠르게 두 번 두드리면 빨강 토글
+let _lastTap = { t: 0, pi: null, d: null };
+function handleCellDouble(e, pi, d) {
+  const now = Date.now();
+  if (_lastTap.pi === pi && _lastTap.d === d && now - _lastTap.t < 350) {
+    _lastTap = { t: 0, pi: null, d: null };
+    toggleEditRed(e, pi, d);
+  } else {
+    _lastTap = { t: now, pi, d };
+  }
 }
 
 let touchTimer = null;
 function handleTouch(e, pi, d) {
-  // 길게 누르면 빨강 토글 (모바일)
+  // (구버전 길게누르기 — 더 이상 사용 안 함)
   touchTimer = setTimeout(() => { toggleEditRed(e, pi, d); }, 500);
   const clear = () => { clearTimeout(touchTimer); };
   e.target.addEventListener('touchend', clear, {once:true});
