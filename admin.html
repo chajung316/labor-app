@@ -98,6 +98,13 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 .day-stat-table td { padding: 5px; text-align: center; border: 1px solid #eee; }
 .day-stat-table td.job-col { text-align: left; font-weight: 500; white-space: nowrap; background: #fafafa; }
 .day-stat-table td.has-worker { background: #e3f2fd; color: #1565c0; font-weight: 600; }
+.day-stat-table th:first-child, .day-stat-table td:first-child { position: sticky; left: 0; z-index: 2; width: 30px; min-width: 30px; background: #fff; }
+.day-stat-table th:first-child { background: #f0f0f0; z-index: 4; }
+.day-stat-table th:nth-child(2), .day-stat-table td:nth-child(2) { position: sticky; left: 30px; z-index: 2; background: #fafafa; box-shadow: 2px 0 3px rgba(0,0,0,0.06); }
+.day-stat-table th:nth-child(2) { background: #f0f0f0; z-index: 4; }
+.doc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.doc-table th { background: #f0f0f0; padding: 7px 4px; border: 1px solid #ddd; text-align: center; white-space: nowrap; }
+.doc-table td { padding: 7px 4px; border: 1px solid #eee; text-align: center; }
 .lock-btn { font-size: 12px; padding: 4px 10px; border: 1px solid #ddd; border-radius: 6px; background: #fff; cursor: pointer; color: #888; }
 </style>
 </head>
@@ -105,15 +112,16 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 <div class="container">
   <h1>⚒️ 노무비 공수 조회 <span style="font-size:13px;color:#185FA5;font-weight:400;">[관리자]</span></h1>
   <div style="text-align:center;margin-bottom:1rem;"><a href="labor-app.html" style="font-size:13px;color:#888;text-decoration:none;">→ 작업자용 페이지로</a></div>
-  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0628-I (공수조회 잠금·테스트)</div>
+  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0628-L (필수서류)</div>
   <div class="tab-bar" style="margin-bottom:5px;">
+    <div class="tab active" data-tab="worker" onclick="showTab('worker')">공수조회</div>
     <div class="tab" data-tab="manage" onclick="showTab('manage')">관리</div>
     <div class="tab" data-tab="list" onclick="showTab('list')">인원목록</div>
     <div class="tab" data-tab="payslip" onclick="showTab('payslip')">명세서</div>
-    <div class="tab" data-tab="toejik" onclick="showTab('toejik')">퇴직공제</div>
   </div>
   <div class="tab-bar">
-    <div class="tab active" data-tab="worker" onclick="showTab('worker')">공수조회</div>
+    <div class="tab" data-tab="toejik" onclick="showTab('toejik')">퇴직공제</div>
+    <div class="tab" data-tab="docs" onclick="showTab('docs')">서류</div>
     <div class="tab" data-tab="upload" onclick="showTab('upload')">업로드</div>
     <div class="tab" data-tab="settings" onclick="showTab('settings')">설정</div>
   </div>
@@ -362,6 +370,31 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
     </div>
   </div>
 
+  <div id="screen-docs" class="screen">
+    <div id="docs-lock" class="admin-lock">
+      <div class="lock-icon">🔒</div>
+      <p>관리자 전용 메뉴입니다</p>
+      <input type="password" id="adoc-pass" placeholder="관리자 비밀번호" style="margin-bottom:0;">
+      <button class="btn primary" onclick="adminUnlock('docs')">확인</button>
+      <div id="adoc-msg" class="msg"></div>
+    </div>
+    <div id="docs-content" style="display:none;">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+          <span class="card-title" style="margin:0;">필수서류 현황</span>
+          <button class="lock-btn" onclick="adminLock()">🔒 잠금</button>
+        </div>
+        <div style="font-size:12px;color:#888;margin-bottom:10px;line-height:1.5;">근로계약서는 <strong>월별</strong>로, 신분증·통장사본은 <strong>한 번만</strong> 받으면 체크돼요. 체크 안 된 사람은 아래 "미비 인원"에 모여요.</div>
+        <label>현장 선택</label>
+        <select id="dc-site" onchange="loadDocsMonths()"><option value="">-- 현장 선택 --</option></select>
+        <label>월 선택</label>
+        <select id="dc-month" onchange="loadDocs()"><option value="">-- 월 선택 --</option></select>
+        <div id="dc-result" style="margin-top:1rem;"></div>
+      </div>
+      <div id="dc-missing"></div>
+    </div>
+  </div>
+
   <!-- 설정 -->
   <div id="screen-settings" class="screen">
     <div id="settings-lock" class="admin-lock">
@@ -437,6 +470,12 @@ const ADMIN_KEY = 'admin_password';
 
 function getAdminPass() { return localStorage.getItem(ADMIN_KEY) || '0000'; }
 function setAdminPass(p) { localStorage.setItem(ADMIN_KEY, p); }
+function confirmWithPass(msg) {
+  const p = prompt(msg + '\n\n실행하려면 관리자 비밀번호를 입력하세요:');
+  if (p === null) return false; // 취소
+  if (p !== getAdminPass()) { alert('관리자 비밀번호가 일치하지 않아 취소됐어요.'); return false; }
+  return true;
+}
 
 // 전화번호 정규화 (하이픈 제거, 숫자만)
 function normalizePhone(p) { return String(p || '').replace(/[^0-9]/g, ''); }
@@ -466,8 +505,8 @@ function showMsg(id, text, type) {
 }
 
 function adminUnlock(tab) {
-  const passMap = { worker:'aw-pass', upload:'al-pass', manage:'am-pass', list:'alist-pass', stats:'astats-pass', payslip:'apay-pass', toejik:'atj-pass', settings:'aset-pass' };
-  const msgMap  = { worker:'aw-msg',  upload:'al-msg',  manage:'am-msg',  list:'alist-msg',  stats:'astats-msg', payslip:'apay-msg', toejik:'atj-msg', settings:'aset-msg' };
+  const passMap = { worker:'aw-pass', upload:'al-pass', manage:'am-pass', list:'alist-pass', stats:'astats-pass', payslip:'apay-pass', toejik:'atj-pass', docs:'adoc-pass', settings:'aset-pass' };
+  const msgMap  = { worker:'aw-msg',  upload:'al-msg',  manage:'am-msg',  list:'alist-msg',  stats:'astats-msg', payslip:'apay-msg', toejik:'atj-msg', docs:'adoc-msg', settings:'aset-msg' };
   const input = document.getElementById(passMap[tab]);
   if (input.value !== getAdminPass()) {
     showMsg(msgMap[tab], '비밀번호가 틀렸어요', 'error');
@@ -475,7 +514,7 @@ function adminUnlock(tab) {
   }
   // 한 번 풀면 모든 탭 해제
   window._adminUnlocked = true;
-  ['upload','manage','list','stats','payslip','toejik','settings'].forEach(t => {
+  ['upload','manage','list','stats','payslip','toejik','docs','settings'].forEach(t => {
     const lk = document.getElementById(`${t}-lock`);
     const ct = document.getElementById(`${t}-content`);
     if (lk) lk.style.display = 'none';
@@ -493,7 +532,7 @@ function adminUnlock(tab) {
 }
 
 function adminLock() {
-  ['upload','manage','list','stats','payslip','toejik','settings'].forEach(tab => {
+  ['upload','manage','list','stats','payslip','toejik','docs','settings'].forEach(tab => {
     const lock = document.getElementById(`${tab}-lock`);
     const content = document.getElementById(`${tab}-content`);
     if (lock) lock.style.display = 'block';
@@ -635,6 +674,7 @@ function changePassword() {
   if (oldP !== getAdminPass()) return showMsg('cp-msg', '현재 비밀번호가 틀렸어요', 'error');
   if (!newP) return showMsg('cp-msg', '새 비밀번호를 입력해주세요', 'error');
   if (newP !== newP2) return showMsg('cp-msg', '새 비밀번호가 일치하지 않아요', 'error');
+  if (!confirm('관리자 비밀번호를 변경할까요?')) return;
   setAdminPass(newP);
   document.getElementById('cp-old').value = '';
   document.getElementById('cp-new').value = '';
@@ -664,6 +704,11 @@ async function renameSite() {
 async function renameSite_END() {}
 // ===== 퇴직공제 인원 집계 (수동 입력은 localStorage, DB 영향 없음) =====
 let _tjReal = null, _tjManual = [], _tjKey = '';
+let _tjJobChecks = new Set();
+function onTjJobCheck(job, checked) {
+  if (checked) _tjJobChecks.add(job); else _tjJobChecks.delete(job);
+  renderToejik();
+}
 
 function loadToejikSites() {
   const sel = document.getElementById('tj-site');
@@ -702,21 +747,18 @@ async function loadToejik() {
     const wMap = {}; workers.forEach(w => wMap[w.id] = w.job_type || '미분류');
     const [yr, mo] = month.split('-').map(Number);
     const daysInMonth = new Date(yr, mo, 0).getDate();
-    const jobDay = {}, jobs = [];
-    const realDayWork = {};
+    const jobDay = {}, jobDayWork = {}, jobs = [];
     recs.forEach(r => {
       const job = wMap[r.worker_id] || '미분류';
-      if (!jobDay[job]) { jobDay[job] = {}; jobs.push(job); }
+      if (!jobDay[job]) { jobDay[job] = {}; jobDayWork[job] = {}; jobs.push(job); }
       const dw = r.daily_work || {};
       for (let d = 1; d <= daysInMonth; d++) {
         const w = parseFloat(dw[String(d)]) || 0;
-        if (w > 0) { jobDay[job][d] = (jobDay[job][d] || 0) + 1; realDayWork[d] = (realDayWork[d] || 0) + w; }
+        if (w > 0) { jobDay[job][d] = (jobDay[job][d] || 0) + 1; jobDayWork[job][d] = (jobDayWork[job][d] || 0) + w; }
       }
     });
     jobs.sort();
-    const realDayCnt = {};
-    jobs.forEach(job => { for (let d = 1; d <= daysInMonth; d++) { const c = jobDay[job][d] || 0; if (c > 0) realDayCnt[d] = (realDayCnt[d] || 0) + c; } });
-    _tjReal = { site, month, daysInMonth, jobDay, jobs, realDayCnt, realDayWork };
+    _tjReal = { site, month, daysInMonth, jobDay, jobDayWork, jobs, curCnt:{}, curWork:{} };
     _tjKey = `toejik_${site}_${month}`;
     let saved = null; try { saved = JSON.parse(localStorage.getItem(_tjKey)); } catch(e) {}
     _tjManual = (saved && Array.isArray(saved) && saved.length) ? saved : [{name:'크레인',days:{}},{name:'공사관리',days:{}},{name:'현장관리',days:{}}];
@@ -737,13 +779,13 @@ function tjDelRow(i) { _tjManual.splice(i, 1); saveToejikManual(); renderToejik(
 
 function recomputeToejik() {
   if (!_tjReal) return;
-  const { daysInMonth, realDayCnt, realDayWork } = _tjReal;
+  const { daysInMonth, curCnt, curWork } = _tjReal;
   const fmtW = x => Number.isInteger(x) ? String(x) : x.toFixed(1);
   let msubGrand = 0, totiGrand = 0, totwGrand = 0;
   for (let d = 1; d <= daysInMonth; d++) {
     let msub = 0; _tjManual.forEach(r => { msub += (parseInt(r.days[String(d)]) || 0); });
-    const ti = (realDayCnt[d] || 0) + msub;
-    const tw = (realDayWork[d] || 0) + msub;
+    const ti = (curCnt[d] || 0) + msub;
+    const tw = (curWork[d] || 0) + msub;
     msubGrand += msub; totiGrand += ti; totwGrand += tw;
     const mc = document.getElementById(`tj-msub-${d}`); if (mc) mc.textContent = msub || '';
     const ic = document.getElementById(`tj-toti-${d}`); if (ic) ic.textContent = ti || '';
@@ -757,58 +799,177 @@ function recomputeToejik() {
 function renderToejik() {
   const box = document.getElementById('tj-result');
   if (!_tjReal) { box.innerHTML = ''; return; }
-  const { daysInMonth, jobDay, jobs, realDayCnt, realDayWork, month } = _tjReal;
+  const { daysInMonth, jobDay, jobDayWork, jobs, month } = _tjReal;
   const [yr, mo] = month.split('-').map(Number);
   const fmtW = x => Number.isInteger(x) ? String(x) : x.toFixed(1);
-  let html = '<div style="overflow-x:auto;"><table class="day-stat-table"><tr><th>구분</th>';
+  [..._tjJobChecks].forEach(j => { if (!jobs.includes(j)) _tjJobChecks.delete(j); });
+  const hasSel = _tjJobChecks.size > 0;
+  const activeJobs = hasSel ? jobs.filter(j => _tjJobChecks.has(j)) : jobs;
+  const curCnt = {}, curWork = {};
+  activeJobs.forEach(job => { for (let d = 1; d <= daysInMonth; d++) { const c = jobDay[job][d] || 0; const w = (jobDayWork[job] && jobDayWork[job][d]) || 0; if (c > 0) curCnt[d] = (curCnt[d] || 0) + c; if (w > 0) curWork[d] = (curWork[d] || 0) + w; } });
+  _tjReal.curCnt = curCnt; _tjReal.curWork = curWork;
+  const fc = (bg) => `<td style="background:${bg};"></td>`;
+  const lblc = (txt, color, bg) => `<td class="job-col" style="background:${bg};color:${color};">${txt}</td>`;
+
+  let html = '<div style="overflow-x:auto;"><table class="day-stat-table"><tr><th>✓</th><th>구분</th>';
   for (let d = 1; d <= daysInMonth; d++) { const dow = new Date(yr, mo-1, d).getDay(); html += `<th style="${dow===0?'color:#c62828':dow===6?'color:#1565c0':''}">${d}</th>`; }
   html += '<th>합계</th></tr>';
-  // 실제 직종 (인원수 기준 표시)
-  let realGrandCnt = 0;
+  // 실제 직종 (체크박스)
   jobs.forEach(job => {
-    html += `<tr><td class="job-col">${job}</td>`;
+    const checked = _tjJobChecks.has(job);
+    const faded = hasSel && !checked ? 'opacity:0.4;' : '';
+    const jobEsc = job.replace(/'/g, "\\'");
+    html += `<tr style="${faded}"><td style="text-align:center;background:#fff;"><input type="checkbox" ${checked?'checked':''} onclick="onTjJobCheck('${jobEsc}',this.checked)"></td><td class="job-col">${job}</td>`;
     let rt = 0;
     for (let d = 1; d <= daysInMonth; d++) { const c = jobDay[job][d] || 0; if (c > 0) { rt += c; html += `<td class="has-worker">${c}</td>`; } else html += '<td></td>'; }
-    realGrandCnt += rt;
     html += `<td style="font-weight:700;color:#185FA5;">${rt}</td></tr>`;
   });
   // 실제 소계 (인원)
-  html += '<tr style="background:#eef3f9;font-weight:700;"><td class="job-col" style="background:#eef3f9;">실제 소계 (인원)</td>';
-  for (let d = 1; d <= daysInMonth; d++) { const c = realDayCnt[d] || 0; html += c > 0 ? `<td style="color:#185FA5;">${c}</td>` : '<td></td>'; }
-  html += `<td style="color:#185FA5;">${realGrandCnt}</td></tr>`;
+  let rgi = 0; for (let d = 1; d <= daysInMonth; d++) rgi += (curCnt[d] || 0);
+  html += `<tr style="background:#eef3f9;font-weight:700;">${fc('#eef3f9')}${lblc('실제 소계 (인원)' + (hasSel ? ` ·선택${_tjJobChecks.size}` : ''), '#185FA5', '#eef3f9')}`;
+  for (let d = 1; d <= daysInMonth; d++) { const c = curCnt[d] || 0; html += c > 0 ? `<td style="color:#185FA5;">${c}</td>` : '<td></td>'; }
+  html += `<td style="color:#185FA5;">${rgi}</td></tr>`;
   // 실제 소계 (공수)
-  let realGrandWork = 0; for (let d = 1; d <= daysInMonth; d++) realGrandWork += (realDayWork[d] || 0);
-  html += '<tr style="background:#eef3f9;font-weight:700;"><td class="job-col" style="background:#eef3f9;">실제 소계 (공수)</td>';
-  for (let d = 1; d <= daysInMonth; d++) { const w = realDayWork[d] || 0; html += w > 0 ? `<td style="color:#2e7d32;">${fmtW(w)}</td>` : '<td></td>'; }
-  html += `<td style="color:#2e7d32;">${fmtW(realGrandWork)}</td></tr>`;
+  let rgw = 0; for (let d = 1; d <= daysInMonth; d++) rgw += (curWork[d] || 0);
+  html += `<tr style="background:#eef3f9;font-weight:700;">${fc('#eef3f9')}${lblc('실제 소계 (공수)', '#2e7d32', '#eef3f9')}`;
+  for (let d = 1; d <= daysInMonth; d++) { const w = curWork[d] || 0; html += w > 0 ? `<td style="color:#2e7d32;">${fmtW(w)}</td>` : '<td></td>'; }
+  html += `<td style="color:#2e7d32;">${fmtW(rgw)}</td></tr>`;
   // 수동 줄
   _tjManual.forEach((r, i) => {
     const nm = (r.name || '').replace(/"/g, '&quot;');
-    html += `<tr><td style="white-space:nowrap;background:#fffaf0;"><input type="text" value="${nm}" oninput="tjManualName(${i},this.value)" placeholder="직종명" style="width:64px;border:none;background:transparent;font-weight:600;font-size:12px;color:#e65100;"> <span onclick="tjDelRow(${i})" style="cursor:pointer;color:#c62828;font-size:11px;">✕</span></td>`;
+    html += `<tr>${fc('#fffaf0')}<td style="white-space:nowrap;background:#fffaf0;"><input type="text" value="${nm}" oninput="tjManualName(${i},this.value)" placeholder="직종명" style="width:58px;border:none;background:transparent;font-weight:600;font-size:12px;color:#c2410c;"> <span onclick="tjDelRow(${i})" style="cursor:pointer;color:#c62828;font-size:11px;">✕</span></td>`;
     for (let d = 1; d <= daysInMonth; d++) { const v = r.days[String(d)] || ''; html += `<td style="padding:0;background:#fffaf0;"><input type="text" inputmode="numeric" id="tj-in-${i}-${d}" value="${v}" oninput="tjManualDay(${i},${d},this.value)" onkeydown="tjNav(event,${i},${d})" style="width:30px;border:none;background:transparent;text-align:center;font-size:14px;font-weight:700;color:#c2410c;"></td>`; }
     html += '<td style="background:#fffaf0;"></td></tr>';
   });
   // 수동 소계
-  html += '<tr style="background:#fff3e0;font-weight:700;"><td class="job-col" style="background:#fff3e0;color:#e65100;">수동 소계</td>';
+  html += `<tr style="background:#fff3e0;font-weight:700;">${fc('#fff3e0')}${lblc('수동 소계', '#e65100', '#fff3e0')}`;
   for (let d = 1; d <= daysInMonth; d++) html += `<td id="tj-msub-${d}" style="color:#e65100;"></td>`;
   html += '<td id="tj-msub-g" style="color:#e65100;"></td></tr>';
   // 총 합계 (인원)
-  html += '<tr style="background:#e3f2fd;font-weight:700;"><td class="job-col" style="background:#e3f2fd;color:#0c447c;">총 합계 (인원)</td>';
+  html += `<tr style="background:#e3f2fd;font-weight:700;">${fc('#e3f2fd')}${lblc('총 합계 (인원)', '#0c447c', '#e3f2fd')}`;
   for (let d = 1; d <= daysInMonth; d++) html += `<td id="tj-toti-${d}" style="color:#0c447c;"></td>`;
   html += '<td id="tj-toti-g" style="color:#0c447c;"></td></tr>';
   // 총 합계 (공수)
-  html += '<tr style="background:#e8f5e9;font-weight:700;"><td class="job-col" style="background:#e8f5e9;color:#1b5e20;">총 합계 (공수)</td>';
+  html += `<tr style="background:#e8f5e9;font-weight:700;">${fc('#e8f5e9')}${lblc('총 합계 (공수)', '#1b5e20', '#e8f5e9')}`;
   for (let d = 1; d <= daysInMonth; d++) html += `<td id="tj-totw-${d}" style="color:#1b5e20;"></td>`;
   html += '<td id="tj-totw-g" style="color:#1b5e20;"></td></tr>';
   html += '</table></div>';
   html += '<button class="lock-btn" style="margin-top:8px;" onclick="tjAddRow()">+ 직종 줄 추가</button>';
-  html += '<div style="font-size:11px;color:#999;margin-top:8px;line-height:1.5;">· 인원 = 그날 일한 사람 수, 공수 = 그날 공수의 합<br>· 수동 입력 숫자는 인원·공수 양쪽에 똑같이 더해져요 (크레인·관리 1명=1공수로 봄)</div>';
+  html += '<div style="font-size:11px;color:#999;margin-top:8px;line-height:1.5;">· 직종 왼쪽 체크 시 그 직종만 소계·합계에 반영<br>· 인원 = 그날 일한 사람 수, 공수 = 그날 공수의 합<br>· 수동 숫자는 인원·공수 양쪽에 똑같이 더해져요</div>';
   box.innerHTML = html;
   recomputeToejik();
 }
 
+// ===== 필수서류 현황 =====
+let _docsData = null;
+
+function loadDocsSites() {
+  const sel = document.getElementById('dc-site');
+  if (!sel) return;
+  db('GET', 'work_records', null, 'select=site_name').then(data => {
+    const sites = [...new Set(data.map(d => d.site_name))].sort();
+    sel.innerHTML = '<option value="">-- 현장 선택 --</option>';
+    sites.forEach(s => sel.innerHTML += `<option value="${s}">${s}</option>`);
+  }).catch(() => {});
+}
+
+async function loadDocsMonths() {
+  const site = document.getElementById('dc-site').value;
+  const msel = document.getElementById('dc-month');
+  msel.innerHTML = '<option value="">-- 월 선택 --</option>';
+  document.getElementById('dc-result').innerHTML = '';
+  document.getElementById('dc-missing').innerHTML = '';
+  if (!site) return;
+  try {
+    const data = await db('GET', 'work_records', null, `site_name=eq.${encodeURIComponent(site)}&select=year_month`);
+    const months = [...new Set(data.map(d => d.year_month))].sort().reverse();
+    months.forEach(m => msel.innerHTML += `<option value="${m}">${m}</option>`);
+  } catch(e) {}
+}
+
+async function loadDocs() {
+  const site = document.getElementById('dc-site').value;
+  const month = document.getElementById('dc-month').value;
+  const box = document.getElementById('dc-result');
+  document.getElementById('dc-missing').innerHTML = '';
+  if (!site || !month) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div style="color:#999;">불러오는 중…</div>';
+  try {
+    const [recs, workers] = await Promise.all([
+      db('GET', 'work_records', null, `site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}&select=id,worker_id,contract,seq_no`),
+      db('GET', 'workers', null, 'select=id,name,job_type,id_card,bankbook')
+    ]);
+    const wMap = {}; workers.forEach(w => wMap[w.id] = w);
+    const rows = recs.map(r => {
+      const w = wMap[r.worker_id] || { name:'?', job_type:'', id_card:false, bankbook:false };
+      return { recId: r.id, workerId: r.worker_id, seq: r.seq_no || 0, name: w.name, job: w.job_type || '', contract: !!r.contract, id_card: !!w.id_card, bankbook: !!w.bankbook };
+    }).sort((a,b) => (a.seq||9999) - (b.seq||9999));
+    _docsData = { site, month, rows };
+    renderDocs();
+  } catch(e) { box.innerHTML = '<div style="color:#c62828;">오류: ' + e.message + '</div>'; }
+}
+
+function renderDocs() {
+  if (!_docsData) return;
+  const { rows } = _docsData;
+  const box = document.getElementById('dc-result');
+  const chk = (on, fn) => `<input type="checkbox" ${on?'checked':''} onclick="${fn}" style="transform:scale(1.3);cursor:pointer;">`;
+  let html = '<div style="overflow-x:auto;"><table class="doc-table"><tr><th>성명</th><th>직종</th><th>근로계약서<br><span style="font-weight:400;font-size:10px;">(월별)</span></th><th>신분증<br><span style="font-weight:400;font-size:10px;">(1회)</span></th><th>통장사본<br><span style="font-weight:400;font-size:10px;">(1회)</span></th></tr>';
+  rows.forEach((r, i) => {
+    html += `<tr>
+      <td style="text-align:left;font-weight:600;white-space:nowrap;">${r.name}</td>
+      <td style="color:#888;font-size:12px;white-space:nowrap;">${r.job}</td>
+      <td>${chk(r.contract, `toggleDoc('contract',${i},this.checked)`)}</td>
+      <td>${chk(r.id_card, `toggleDoc('id_card',${i},this.checked)`)}</td>
+      <td>${chk(r.bankbook, `toggleDoc('bankbook',${i},this.checked)`)}</td>
+    </tr>`;
+  });
+  html += '</table></div>';
+  box.innerHTML = html;
+  renderDocsMissing();
+}
+
+async function toggleDoc(kind, i, checked) {
+  if (!_docsData) return;
+  const r = _docsData.rows[i];
+  try {
+    if (kind === 'contract') { await db('PATCH', `work_records?id=eq.${r.recId}`, { contract: checked }); r.contract = checked; }
+    else if (kind === 'id_card') {
+      await db('PATCH', `workers?id=eq.${r.workerId}`, { id_card: checked }); r.id_card = checked;
+      _docsData.rows.forEach(x => { if (x.workerId === r.workerId) x.id_card = checked; });
+    } else if (kind === 'bankbook') {
+      await db('PATCH', `workers?id=eq.${r.workerId}`, { bankbook: checked }); r.bankbook = checked;
+      _docsData.rows.forEach(x => { if (x.workerId === r.workerId) x.bankbook = checked; });
+    }
+    renderDocsMissing();
+  } catch(e) { alert('저장 오류: ' + e.message); renderDocs(); }
+}
+
+function renderDocsMissing() {
+  if (!_docsData) return;
+  const box = document.getElementById('dc-missing');
+  const missing = _docsData.rows.filter(r => !r.contract || !r.id_card || !r.bankbook);
+  if (missing.length === 0) {
+    box.innerHTML = '<div class="card" style="text-align:center;color:#2e7d32;font-weight:600;">✅ 모든 인원의 필수서류가 갖춰졌어요</div>';
+    return;
+  }
+  let html = `<div class="card"><div class="card-title" style="color:#c62828;">⚠️ 미비 인원 (${missing.length}명)</div>`;
+  missing.forEach(r => {
+    const lack = [];
+    if (!r.contract) lack.push('근로계약서');
+    if (!r.id_card) lack.push('신분증');
+    if (!r.bankbook) lack.push('통장사본');
+    html += `<div style="padding:7px 0;border-bottom:1px solid #f0f0f0;">
+      <span style="font-weight:600;">${r.name}</span> <span style="color:#999;font-size:12px;">${r.job}</span>
+      <div style="font-size:13px;color:#c62828;margin-top:2px;">미제출: ${lack.join(', ')}</div>
+    </div>`;
+  });
+  html += '</div>';
+  box.innerHTML = html;
+}
+
 function showTab(tab) {
-  const tabs = ['worker','upload','manage','list','payslip','toejik','settings'];
+  const tabs = ['worker','upload','manage','list','payslip','toejik','docs','settings'];
   document.querySelectorAll('.tab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
   tabs.forEach(t => { const s = document.getElementById('screen-' + t); if (s) s.classList.toggle('active', t === tab); });
   if (tab === 'worker') { revealWorkerAdminBox(); }
@@ -822,6 +983,7 @@ function showTab(tab) {
     if (tab === 'list') loadList();
     if (tab === 'payslip') loadPaySlipSites();
     if (tab === 'toejik') loadToejikSites();
+    if (tab === 'docs') loadDocsSites();
     if (tab === 'upload') loadUploadSites();
     if (tab === 'settings') loadManageSites();
   }
@@ -928,7 +1090,7 @@ async function previewDelete() {
 async function deleteData() {
   const site = document.getElementById('m-site').value;
   const month = document.getElementById('m-month').value;
-  if (!confirm(`${site} · ${month} 데이터를 정말 삭제할까요?`)) return;
+  if (!confirmWithPass(`${site} · ${month} 데이터를 정말 삭제할까요? (복구 불가)`)) return;
   try {
     await db('DELETE', `work_records?site_name=eq.${encodeURIComponent(site)}&year_month=eq.${month}`);
     showMsg('m-msg', '삭제 완료!', 'success');
@@ -1198,7 +1360,7 @@ function renderJobDaySummary(listArg) {
   activeJobs.forEach(job => {
     for (let d = 1; d <= daysInMonth; d++) { const c = jobDay[job][d] || 0; if (c > 0) dayGrand[d] = (dayGrand[d] || 0) + c; }
   });
-  html += '<tr style="background:#e3f2fd;font-weight:700;"><td></td><td class="job-col" style="color:#0c447c;background:#e3f2fd;">합계' + (hasSel ? ` <span style="font-size:10px;color:#1565c0;">(선택 ${_jobChecks.size})</span>` : '') + '</td>';
+  html += '<tr style="background:#e3f2fd;font-weight:700;"><td style="background:#e3f2fd;"></td><td class="job-col" style="color:#0c447c;background:#e3f2fd;">합계' + (hasSel ? ` <span style="font-size:10px;color:#1565c0;">(선택 ${_jobChecks.size})</span>` : '') + '</td>';
   for (let d = 1; d <= daysInMonth; d++) { const c = dayGrand[d] || 0; grand += c; html += c > 0 ? `<td style="color:#0c447c;">${c}</td>` : '<td></td>'; }
   html += `<td style="color:#0c447c;">${grand}</td></tr>`;
 
@@ -1640,7 +1802,7 @@ function filterWorkers() {
 }
 
 async function resetWorkerPw(id, name) {
-  if (!confirm(`${name}님의 비밀번호를 초기화할까요?\n(다음 조회 때 비밀번호를 새로 설정하게 돼요)`)) return;
+  if (!confirmWithPass(`${name}님의 비밀번호를 초기화할까요? (다음 조회 때 새로 설정하게 돼요)`)) return;
   try {
     await db('PATCH', `workers?id=eq.${id}`, { password: null, pw_fails: 0, locked: false });
     alert(`${name}님 비밀번호가 초기화됐어요.`);
@@ -1661,7 +1823,7 @@ function renderWorkerList(workers) {
       </div>
       <div class="worker-detail" id="detail-w${idx}">
         <button class="btn primary" style="margin-top:0;padding:8px;font-size:13px;" onclick="loadWorkerHistory('${w.id}','w${idx}')">📋 전체 근무 이력 보기</button>
-        <button class="btn" style="margin-top:6px;padding:8px;font-size:13px;" onclick="resetWorkerPw('${w.id}','${(w.name||'').replace(/'/g,"\\'")}')">🔑 비밀번호 초기화</button>
+        <div style="text-align:right;margin-top:6px;"><span onclick="resetWorkerPw('${w.id}','${(w.name||'').replace(/'/g,"\\'")}')" style="font-size:12px;color:#aaa;text-decoration:underline;cursor:pointer;">🔑 비밀번호 초기화</span></div>
         <div style="margin-top:8px;">
           <div class="detail-selects">
             <select id="ds-w${idx}" onchange="loadWorkerDetail('${w.id}','w${idx}')">
