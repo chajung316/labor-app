@@ -105,15 +105,17 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 <div class="container">
   <h1>⚒️ 노무비 공수 조회 <span style="font-size:13px;color:#185FA5;font-weight:400;">[관리자]</span></h1>
   <div style="text-align:center;margin-bottom:1rem;"><a href="labor-app.html" style="font-size:13px;color:#888;text-decoration:none;">→ 작업자용 페이지로</a></div>
-  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0628-G (인원·공수 합계)</div>
+  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0628-H (탭 2줄)</div>
+  <div class="tab-bar" style="margin-bottom:5px;">
+    <div class="tab" data-tab="manage" onclick="showTab('manage')">관리</div>
+    <div class="tab" data-tab="list" onclick="showTab('list')">인원목록</div>
+    <div class="tab" data-tab="payslip" onclick="showTab('payslip')">명세서</div>
+    <div class="tab" data-tab="toejik" onclick="showTab('toejik')">퇴직공제</div>
+  </div>
   <div class="tab-bar">
-    <div class="tab active" onclick="showTab('worker')">공수조회</div>
-    <div class="tab" onclick="showTab('upload')">업로드</div>
-    <div class="tab" onclick="showTab('manage')">관리</div>
-    <div class="tab" onclick="showTab('list')">인원목록</div>
-    <div class="tab" onclick="showTab('payslip')">명세서</div>
-    <div class="tab" onclick="showTab('toejik')">퇴직공제</div>
-    <div class="tab" onclick="showTab('settings')">설정</div>
+    <div class="tab active" data-tab="worker" onclick="showTab('worker')">공수조회</div>
+    <div class="tab" data-tab="upload" onclick="showTab('upload')">업로드</div>
+    <div class="tab" data-tab="settings" onclick="showTab('settings')">설정</div>
   </div>
 
   <!-- 작업자 조회 (관리자 전용 설정만) -->
@@ -786,10 +788,9 @@ function renderToejik() {
 }
 
 function showTab(tab) {
-  ['worker','upload','manage','list','payslip','toejik','settings'].forEach((t,i) => {
-    document.querySelectorAll('.tab')[i].classList.toggle('active', t === tab);
-    document.getElementById('screen-' + t).classList.toggle('active', t === tab);
-  });
+  const tabs = ['worker','upload','manage','list','payslip','toejik','settings'];
+  document.querySelectorAll('.tab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
+  tabs.forEach(t => { const s = document.getElementById('screen-' + t); if (s) s.classList.toggle('active', t === tab); });
   if (tab === 'worker') { loadSites(); revealWorkerAdminBox(); }
   // 이미 잠금 해제됐으면 해당 탭도 바로 열기
   if (window._adminUnlocked) {
