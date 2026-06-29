@@ -105,7 +105,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 <div class="container">
   <h1>⚒️ 노무비 공수 조회 <span style="font-size:13px;color:#185FA5;font-weight:400;">[관리자]</span></h1>
   <div style="text-align:center;margin-bottom:1rem;"><a href="labor-app.html" style="font-size:13px;color:#888;text-decoration:none;">→ 작업자용 페이지로</a></div>
-  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0628-F (퇴직공제 집계)</div>
+  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0628-G (인원·공수 합계)</div>
   <div class="tab-bar">
     <div class="tab active" onclick="showTab('worker')">공수조회</div>
     <div class="tab" onclick="showTab('upload')">업로드</div>
@@ -681,16 +681,20 @@ async function loadToejik() {
     const [yr, mo] = month.split('-').map(Number);
     const daysInMonth = new Date(yr, mo, 0).getDate();
     const jobDay = {}, jobs = [];
+    const realDayWork = {};
     recs.forEach(r => {
       const job = wMap[r.worker_id] || '미분류';
       if (!jobDay[job]) { jobDay[job] = {}; jobs.push(job); }
       const dw = r.daily_work || {};
-      for (let d = 1; d <= daysInMonth; d++) { if ((parseFloat(dw[String(d)]) || 0) > 0) jobDay[job][d] = (jobDay[job][d] || 0) + 1; }
+      for (let d = 1; d <= daysInMonth; d++) {
+        const w = parseFloat(dw[String(d)]) || 0;
+        if (w > 0) { jobDay[job][d] = (jobDay[job][d] || 0) + 1; realDayWork[d] = (realDayWork[d] || 0) + w; }
+      }
     });
     jobs.sort();
-    const realDayTot = {};
-    jobs.forEach(job => { for (let d = 1; d <= daysInMonth; d++) { const c = jobDay[job][d] || 0; if (c > 0) realDayTot[d] = (realDayTot[d] || 0) + c; } });
-    _tjReal = { site, month, daysInMonth, jobDay, jobs, realDayTot };
+    const realDayCnt = {};
+    jobs.forEach(job => { for (let d = 1; d <= daysInMonth; d++) { const c = jobDay[job][d] || 0; if (c > 0) realDayCnt[d] = (realDayCnt[d] || 0) + c; } });
+    _tjReal = { site, month, daysInMonth, jobDay, jobs, realDayCnt, realDayWork };
     _tjKey = `toejik_${site}_${month}`;
     let saved = null; try { saved = JSON.parse(localStorage.getItem(_tjKey)); } catch(e) {}
     _tjManual = (saved && Array.isArray(saved) && saved.length) ? saved : [{name:'크레인',days:{}},{name:'공사관리',days:{}},{name:'현장관리',days:{}}];
@@ -711,40 +715,50 @@ function tjDelRow(i) { _tjManual.splice(i, 1); saveToejikManual(); renderToejik(
 
 function recomputeToejik() {
   if (!_tjReal) return;
-  const { daysInMonth, realDayTot } = _tjReal;
-  let grand = 0, msubGrand = 0;
+  const { daysInMonth, realDayCnt, realDayWork } = _tjReal;
+  const fmtW = x => Number.isInteger(x) ? String(x) : x.toFixed(1);
+  let msubGrand = 0, totiGrand = 0, totwGrand = 0;
   for (let d = 1; d <= daysInMonth; d++) {
     let msub = 0; _tjManual.forEach(r => { msub += (parseInt(r.days[String(d)]) || 0); });
-    const tot = (realDayTot[d] || 0) + msub;
-    grand += tot; msubGrand += msub;
+    const ti = (realDayCnt[d] || 0) + msub;
+    const tw = (realDayWork[d] || 0) + msub;
+    msubGrand += msub; totiGrand += ti; totwGrand += tw;
     const mc = document.getElementById(`tj-msub-${d}`); if (mc) mc.textContent = msub || '';
-    const tc = document.getElementById(`tj-tot-${d}`); if (tc) tc.textContent = tot || '';
+    const ic = document.getElementById(`tj-toti-${d}`); if (ic) ic.textContent = ti || '';
+    const wc = document.getElementById(`tj-totw-${d}`); if (wc) wc.textContent = tw ? fmtW(tw) : '';
   }
   const mg = document.getElementById('tj-msub-g'); if (mg) mg.textContent = msubGrand;
-  const tg = document.getElementById('tj-tot-g'); if (tg) tg.textContent = grand;
+  const ig = document.getElementById('tj-toti-g'); if (ig) ig.textContent = totiGrand;
+  const wg = document.getElementById('tj-totw-g'); if (wg) wg.textContent = fmtW(totwGrand);
 }
 
 function renderToejik() {
   const box = document.getElementById('tj-result');
   if (!_tjReal) { box.innerHTML = ''; return; }
-  const { daysInMonth, jobDay, jobs, realDayTot, month } = _tjReal;
+  const { daysInMonth, jobDay, jobs, realDayCnt, realDayWork, month } = _tjReal;
   const [yr, mo] = month.split('-').map(Number);
+  const fmtW = x => Number.isInteger(x) ? String(x) : x.toFixed(1);
   let html = '<div style="overflow-x:auto;"><table class="day-stat-table"><tr><th>구분</th>';
   for (let d = 1; d <= daysInMonth; d++) { const dow = new Date(yr, mo-1, d).getDay(); html += `<th style="${dow===0?'color:#c62828':dow===6?'color:#1565c0':''}">${d}</th>`; }
   html += '<th>합계</th></tr>';
-  // 실제 직종
-  let realGrand = 0;
+  // 실제 직종 (인원수 기준 표시)
+  let realGrandCnt = 0;
   jobs.forEach(job => {
     html += `<tr><td class="job-col">${job}</td>`;
     let rt = 0;
     for (let d = 1; d <= daysInMonth; d++) { const c = jobDay[job][d] || 0; if (c > 0) { rt += c; html += `<td class="has-worker">${c}</td>`; } else html += '<td></td>'; }
-    realGrand += rt;
+    realGrandCnt += rt;
     html += `<td style="font-weight:700;color:#185FA5;">${rt}</td></tr>`;
   });
-  // 실제 소계
-  html += '<tr style="background:#eef3f9;font-weight:700;"><td class="job-col" style="background:#eef3f9;">실제 소계</td>';
-  for (let d = 1; d <= daysInMonth; d++) { const c = realDayTot[d] || 0; html += c > 0 ? `<td style="color:#185FA5;">${c}</td>` : '<td></td>'; }
-  html += `<td style="color:#185FA5;">${realGrand}</td></tr>`;
+  // 실제 소계 (인원)
+  html += '<tr style="background:#eef3f9;font-weight:700;"><td class="job-col" style="background:#eef3f9;">실제 소계 (인원)</td>';
+  for (let d = 1; d <= daysInMonth; d++) { const c = realDayCnt[d] || 0; html += c > 0 ? `<td style="color:#185FA5;">${c}</td>` : '<td></td>'; }
+  html += `<td style="color:#185FA5;">${realGrandCnt}</td></tr>`;
+  // 실제 소계 (공수)
+  let realGrandWork = 0; for (let d = 1; d <= daysInMonth; d++) realGrandWork += (realDayWork[d] || 0);
+  html += '<tr style="background:#eef3f9;font-weight:700;"><td class="job-col" style="background:#eef3f9;">실제 소계 (공수)</td>';
+  for (let d = 1; d <= daysInMonth; d++) { const w = realDayWork[d] || 0; html += w > 0 ? `<td style="color:#2e7d32;">${fmtW(w)}</td>` : '<td></td>'; }
+  html += `<td style="color:#2e7d32;">${fmtW(realGrandWork)}</td></tr>`;
   // 수동 줄
   _tjManual.forEach((r, i) => {
     const nm = (r.name || '').replace(/"/g, '&quot;');
@@ -756,12 +770,17 @@ function renderToejik() {
   html += '<tr style="background:#fff3e0;font-weight:700;"><td class="job-col" style="background:#fff3e0;color:#e65100;">수동 소계</td>';
   for (let d = 1; d <= daysInMonth; d++) html += `<td id="tj-msub-${d}" style="color:#e65100;"></td>`;
   html += '<td id="tj-msub-g" style="color:#e65100;"></td></tr>';
-  // 총 합계
-  html += '<tr style="background:#e3f2fd;font-weight:700;"><td class="job-col" style="background:#e3f2fd;color:#0c447c;">총 합계</td>';
-  for (let d = 1; d <= daysInMonth; d++) html += `<td id="tj-tot-${d}" style="color:#0c447c;"></td>`;
-  html += '<td id="tj-tot-g" style="color:#0c447c;"></td></tr>';
+  // 총 합계 (인원)
+  html += '<tr style="background:#e3f2fd;font-weight:700;"><td class="job-col" style="background:#e3f2fd;color:#0c447c;">총 합계 (인원)</td>';
+  for (let d = 1; d <= daysInMonth; d++) html += `<td id="tj-toti-${d}" style="color:#0c447c;"></td>`;
+  html += '<td id="tj-toti-g" style="color:#0c447c;"></td></tr>';
+  // 총 합계 (공수)
+  html += '<tr style="background:#e8f5e9;font-weight:700;"><td class="job-col" style="background:#e8f5e9;color:#1b5e20;">총 합계 (공수)</td>';
+  for (let d = 1; d <= daysInMonth; d++) html += `<td id="tj-totw-${d}" style="color:#1b5e20;"></td>`;
+  html += '<td id="tj-totw-g" style="color:#1b5e20;"></td></tr>';
   html += '</table></div>';
   html += '<button class="lock-btn" style="margin-top:8px;" onclick="tjAddRow()">+ 직종 줄 추가</button>';
+  html += '<div style="font-size:11px;color:#999;margin-top:8px;line-height:1.5;">· 인원 = 그날 일한 사람 수, 공수 = 그날 공수의 합<br>· 수동 입력 숫자는 인원·공수 양쪽에 똑같이 더해져요 (크레인·관리 1명=1공수로 봄)</div>';
   box.innerHTML = html;
   recomputeToejik();
 }
