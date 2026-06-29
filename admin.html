@@ -47,6 +47,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 .edit-table th { background: #f0f0f0; padding: 5px 3px; text-align: center; font-weight: 600; color: #555; border: 1px solid #e0e0e0; white-space: nowrap; }
 .edit-table td { padding: 0; text-align: center; border: 1px solid #e8e8e8; }
 .edit-table .edit-cell { background: #fff; touch-action: manipulation; }
+.edit-table td.ss { position: static !important; left: auto !important; box-shadow: none !important; background: #eef3f9 !important; }
 .edit-table .edit-cell.red-cell { background: #ffebee; }
 .edit-table .edit-cell input { padding: 6px 2px; touch-action: manipulation; }
 .edit-table .sticky-col { position: sticky; left: 0; background: #fafafa; z-index: 1; min-width: 32px; width: 32px; padding: 5px 4px; }
@@ -104,7 +105,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 <div class="container">
   <h1>⚒️ 노무비 공수 조회 <span style="font-size:13px;color:#185FA5;font-weight:400;">[관리자]</span></h1>
   <div style="text-align:center;margin-bottom:1rem;"><a href="labor-app.html" style="font-size:13px;color:#888;text-decoration:none;">→ 작업자용 페이지로</a></div>
-  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0628-C (합계 2줄)</div>
+  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0628-D (합계 이름)</div>
   <div class="tab-bar">
     <div class="tab active" onclick="showTab('worker')">공수조회</div>
     <div class="tab" onclick="showTab('upload')">업로드</div>
@@ -845,18 +846,19 @@ function renderEditTable() {
       if (v > 0) { dayTotals[d] = (dayTotals[d] || 0) + v; dayCounts[d] = (dayCounts[d] || 0) + 1; }
     }
   });
-  const SUMBG = "background:#eef3f9;font-weight:700;";
-  const lblCell = (txt) => `<td class="sticky-col"></td><td></td><td style="color:#185FA5;white-space:nowrap;">${txt}</td><td></td><td></td>`;
-  // 일수 합계 행 (날짜별 인원수)
-  html += `<tr style="${SUMBG}" id="ed-row-days">` + lblCell('일수 합계');
+  const lblStyle = 'text-align:left;color:#185FA5;font-weight:700;white-space:nowrap;padding-left:10px;font-size:13px;';
+  // 일수 합계 행 (번호~일당 칸에 이름, 날짜 칸부터 인원수)
+  html += `<tr id="ed-row-days">`;
+  html += `<td class="sticky-col ss"></td><td class="ss" colspan="4" style="${lblStyle}">일수 합계</td>`;
   for (let d = 1; d <= daysInMonth; d++)
-    html += `<td id="ed-dcnt-${d}" style="color:#185FA5;font-size:11px;">${dayCounts[d]||''}</td>`;
-  html += `<td id="ed-gdays" style="color:#185FA5;">${grandDays}</td><td></td><td></td></tr>`;
-  // 공수 합계 행 (날짜별 공수)
-  html += `<tr style="${SUMBG}" id="ed-row-work">` + lblCell('공수 합계');
+    html += `<td class="ss" id="ed-dcnt-${d}" style="color:#185FA5;font-size:11px;">${dayCounts[d]||''}</td>`;
+  html += `<td class="ss" id="ed-gdays" style="color:#185FA5;font-weight:700;">${grandDays}</td><td class="ss"></td><td class="ss"></td></tr>`;
+  // 공수 합계 행 (번호~일당 칸에 이름, 날짜 칸부터 공수)
+  html += `<tr id="ed-row-work">`;
+  html += `<td class="sticky-col ss"></td><td class="ss" colspan="4" style="${lblStyle}">공수 합계</td>`;
   for (let d = 1; d <= daysInMonth; d++)
-    html += `<td id="ed-dtot-${d}" style="color:#185FA5;font-size:11px;">${dayTotals[d]?dayTotals[d].toFixed(1):''}</td>`;
-  html += `<td></td><td id="ed-gwork" style="color:#185FA5;">${grandWork.toFixed(1)}</td><td id="ed-gamt" style="color:#c62828;white-space:nowrap;">${grandAmt?grandAmt.toLocaleString():''}</td></tr>`;
+    html += `<td class="ss" id="ed-dtot-${d}" style="color:#185FA5;font-size:11px;">${dayTotals[d]?dayTotals[d].toFixed(1):''}</td>`;
+  html += `<td class="ss"></td><td class="ss" id="ed-gwork" style="color:#185FA5;font-weight:700;">${grandWork.toFixed(1)}</td><td class="ss" id="ed-gamt" style="color:#c62828;font-weight:700;white-space:nowrap;">${grandAmt?grandAmt.toLocaleString():''}</td></tr>`;
   html += '</table></div>';
 
   // 선택 합계 박스
