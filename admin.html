@@ -105,7 +105,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 <div class="container">
   <h1>⚒️ 노무비 공수 조회 <span style="font-size:13px;color:#185FA5;font-weight:400;">[관리자]</span></h1>
   <div style="text-align:center;margin-bottom:1rem;"><a href="labor-app.html" style="font-size:13px;color:#888;text-decoration:none;">→ 작업자용 페이지로</a></div>
-  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0628-H (탭 2줄)</div>
+  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0628-I (공수조회 잠금·테스트)</div>
   <div class="tab-bar" style="margin-bottom:5px;">
     <div class="tab" data-tab="manage" onclick="showTab('manage')">관리</div>
     <div class="tab" data-tab="list" onclick="showTab('list')">인원목록</div>
@@ -120,27 +120,49 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 
   <!-- 작업자 조회 (관리자 전용 설정만) -->
   <div id="screen-worker" class="screen active">
-    <div id="worker-admin-box" style="display:none;">
-      <div class="card">
-        <div class="card-title">⚙️ 작업자 이력 표시 <span style="font-weight:400;color:#999;font-size:12px;">· 관리자 전용</span></div>
-        <label>작업자가 조회할 때 보이는 범위</label>
-        <select id="w-hist-mode" onchange="onHistModeChange(this.value)">
-          <option value="all">전체 근무 이력 보여주기</option>
-          <option value="period">특정 현장·월만 보여주기</option>
-          <option value="none">안 보여주기 (조회 차단)</option>
-        </select>
-        <div id="hist-period-box" style="display:none;">
-          <label>현장</label>
-          <select id="hist-site" onchange="onHistSiteChange(this.value)"><option value="">-- 현장 선택 --</option></select>
-          <label>월</label>
-          <select id="hist-month" onchange="onHistMonthChange(this.value)"><option value="">-- 월 선택 --</option></select>
-        </div>
-        <div id="hist-msg" class="msg"></div>
-      </div>
+    <div id="worker-lock" class="admin-lock">
+      <div class="lock-icon">🔒</div>
+      <p>관리자 전용 메뉴입니다</p>
+      <input type="password" id="aw-pass" placeholder="관리자 비밀번호" style="margin-bottom:0;">
+      <button class="btn primary" onclick="adminUnlock('worker')">확인</button>
+      <div id="aw-msg" class="msg"></div>
+      <p style="font-size:12px;color:#999;margin-top:12px;">작업자는 <a href="labor-app.html" style="color:#185FA5;">작업자용 페이지</a>에서 조회하세요.</p>
     </div>
-    <div id="worker-locked-note" class="card" style="text-align:center;color:#999;font-size:14px;">
-      작업자는 <a href="labor-app.html" style="color:#185FA5;">작업자용 페이지</a>에서 조회하세요.<br>
-      <span style="font-size:12px;">(관리자 설정은 잠금 해제 후 보여요)</span>
+    <div id="worker-content" style="display:none;">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:0.5rem;">
+        <button class="lock-btn" onclick="adminLock()">🔒 잠금</button>
+      </div>
+      <div id="worker-admin-box">
+        <div class="card">
+          <div class="card-title">⚙️ 작업자 이력 표시 <span style="font-weight:400;color:#999;font-size:12px;">· 관리자 전용</span></div>
+          <label>작업자가 조회할 때 보이는 범위</label>
+          <select id="w-hist-mode" onchange="onHistModeChange(this.value)">
+            <option value="all">전체 근무 이력 보여주기</option>
+            <option value="period">특정 현장·월만 보여주기</option>
+            <option value="none">안 보여주기 (조회 차단)</option>
+          </select>
+          <div id="hist-period-box" style="display:none;">
+            <label>현장</label>
+            <select id="hist-site" onchange="onHistSiteChange(this.value)"><option value="">-- 현장 선택 --</option></select>
+            <label>월</label>
+            <select id="hist-month" onchange="onHistMonthChange(this.value)"><option value="">-- 월 선택 --</option></select>
+          </div>
+          <div id="hist-msg" class="msg"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">🔎 작업자 공수조회 테스트 <span style="font-weight:400;color:#999;font-size:12px;">· 설정 확인용</span></div>
+        <div style="font-size:12px;color:#888;margin-bottom:10px;line-height:1.5;">위 설정대로 작업자에게 어떻게 보이는지 직접 확인해요. (비밀번호는 비워도 테스트 돼요)</div>
+        <label>이름</label>
+        <input type="text" id="tw-name" placeholder="홍길동">
+        <label>핸드폰번호 (숫자만)</label>
+        <input type="tel" id="tw-phone" placeholder="01012345678">
+        <label>비밀번호 (선택)</label>
+        <input type="password" id="tw-pw" inputmode="numeric" maxlength="6" placeholder="비워도 됨">
+        <button class="btn primary" style="margin-top:10px;" onclick="adminWorkerTest()">🔍 테스트 조회</button>
+        <div id="tw-msg" class="msg"></div>
+      </div>
+      <div id="w-result" style="display:none;"></div>
     </div>
   </div>
 
@@ -444,8 +466,8 @@ function showMsg(id, text, type) {
 }
 
 function adminUnlock(tab) {
-  const passMap = { upload:'al-pass', manage:'am-pass', list:'alist-pass', stats:'astats-pass', payslip:'apay-pass', toejik:'atj-pass', settings:'aset-pass' };
-  const msgMap  = { upload:'al-msg',  manage:'am-msg',  list:'alist-msg',  stats:'astats-msg', payslip:'apay-msg', toejik:'atj-msg', settings:'aset-msg' };
+  const passMap = { worker:'aw-pass', upload:'al-pass', manage:'am-pass', list:'alist-pass', stats:'astats-pass', payslip:'apay-pass', toejik:'atj-pass', settings:'aset-pass' };
+  const msgMap  = { worker:'aw-msg',  upload:'al-msg',  manage:'am-msg',  list:'alist-msg',  stats:'astats-msg', payslip:'apay-msg', toejik:'atj-msg', settings:'aset-msg' };
   const input = document.getElementById(passMap[tab]);
   if (input.value !== getAdminPass()) {
     showMsg(msgMap[tab], '비밀번호가 틀렸어요', 'error');
@@ -478,16 +500,14 @@ function adminLock() {
     if (content) content.style.display = 'none';
   });
   window._adminUnlocked = false;
-  const box = document.getElementById('worker-admin-box');
-  if (box) box.style.display = 'none';
+  revealWorkerAdminBox();
 }
 
 function revealWorkerAdminBox() {
-  const box = document.getElementById('worker-admin-box');
-  const note = document.getElementById('worker-locked-note');
-  if (note) note.style.display = window._adminUnlocked ? 'none' : 'block';
-  if (!box) return;
-  box.style.display = window._adminUnlocked ? 'block' : 'none';
+  const lock = document.getElementById('worker-lock');
+  const content = document.getElementById('worker-content');
+  if (lock) lock.style.display = window._adminUnlocked ? 'none' : 'block';
+  if (content) content.style.display = window._adminUnlocked ? 'block' : 'none';
   if (window._adminUnlocked) refreshHistUI();
 }
 
@@ -765,7 +785,7 @@ function renderToejik() {
   _tjManual.forEach((r, i) => {
     const nm = (r.name || '').replace(/"/g, '&quot;');
     html += `<tr><td style="white-space:nowrap;background:#fffaf0;"><input type="text" value="${nm}" oninput="tjManualName(${i},this.value)" placeholder="직종명" style="width:64px;border:none;background:transparent;font-weight:600;font-size:12px;color:#e65100;"> <span onclick="tjDelRow(${i})" style="cursor:pointer;color:#c62828;font-size:11px;">✕</span></td>`;
-    for (let d = 1; d <= daysInMonth; d++) { const v = r.days[String(d)] || ''; html += `<td style="padding:0;background:#fffaf0;"><input type="text" inputmode="numeric" value="${v}" oninput="tjManualDay(${i},${d},this.value)" style="width:26px;border:none;background:transparent;text-align:center;font-size:12px;"></td>`; }
+    for (let d = 1; d <= daysInMonth; d++) { const v = r.days[String(d)] || ''; html += `<td style="padding:0;background:#fffaf0;"><input type="text" inputmode="numeric" id="tj-in-${i}-${d}" value="${v}" oninput="tjManualDay(${i},${d},this.value)" onkeydown="tjNav(event,${i},${d})" style="width:30px;border:none;background:transparent;text-align:center;font-size:14px;font-weight:700;color:#c2410c;"></td>`; }
     html += '<td style="background:#fffaf0;"></td></tr>';
   });
   // 수동 소계
@@ -791,7 +811,7 @@ function showTab(tab) {
   const tabs = ['worker','upload','manage','list','payslip','toejik','settings'];
   document.querySelectorAll('.tab').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
   tabs.forEach(t => { const s = document.getElementById('screen-' + t); if (s) s.classList.toggle('active', t === tab); });
-  if (tab === 'worker') { loadSites(); revealWorkerAdminBox(); }
+  if (tab === 'worker') { revealWorkerAdminBox(); }
   // 이미 잠금 해제됐으면 해당 탭도 바로 열기
   if (window._adminUnlocked) {
     const lk = document.getElementById(`${tab}-lock`);
@@ -1331,6 +1351,52 @@ async function saveEditTable() {
   btn.innerHTML = '💾 전체 저장';
   btn.disabled = false;
   showMsg('ed-msg', fail===0 ? `${ok}명 저장 완료!` : `저장 ${ok}명 / 실패 ${fail}명`, fail===0?'success':'error');
+}
+
+async function adminWorkerTest() {
+  const name = document.getElementById('tw-name').value.trim();
+  const phone = normalizePhone(document.getElementById('tw-phone').value);
+  const pw = document.getElementById('tw-pw').value.trim();
+  const resultEl = document.getElementById('w-result');
+  if (resultEl) resultEl.style.display = 'none';
+  if (!name || !phone) return showMsg('tw-msg', '이름과 핸드폰번호를 입력하세요', 'error');
+  try {
+    await loadHistSettings();
+    if (_histMode === 'none') return showMsg('tw-msg', '작업자 화면 → "아직 출력 작업 중입니다" (조회 차단 상태)', 'error');
+    const workers = await db('GET', 'workers', null, `name=eq.${encodeURIComponent(name)}&phone=eq.${phone}&select=id,name,job_type,password,locked`);
+    if (!workers || workers.length === 0) return showMsg('tw-msg', '명단에 없는 이름/번호예요', 'error');
+    const worker = workers[0];
+    if (worker.locked) return showMsg('tw-msg', '이 작업자는 비밀번호 잠금 상태예요 (인원목록에서 초기화 필요)', 'error');
+    if (worker.password && pw && pw !== String(worker.password)) return showMsg('tw-msg', '비밀번호가 일치하지 않아요', 'error');
+    if (_histMode === 'period' && (!_histSite || !_histMonth)) return showMsg('tw-msg', '작업자 화면 → "아직 출력 작업 중입니다" (현장·월 미선택)', 'error');
+    let records = await db('GET', 'work_records', null, `worker_id=eq.${worker.id}&select=daily_work,total_days,total_work,site_name,year_month,red_days&order=year_month.desc`);
+    if (!records || records.length === 0) return showMsg('tw-msg', '근무 기록이 없어요', 'error');
+    if (_histMode === 'period') {
+      records = records.filter(r => r.site_name === _histSite && r.year_month === _histMonth);
+      if (!records.length) return showMsg('tw-msg', '해당 기간 근무 기록이 없어요', 'error');
+    }
+    showMsg('tw-msg', '✅ 작업자에게 이렇게 보여요 ↓', 'success');
+    renderWorkerResult(worker, records);
+  } catch(e) { showMsg('tw-msg', e.message, 'error'); }
+}
+
+// 퇴직공제 수동칸: 방향키/엔터로 이동
+function tjNav(e, i, d) {
+  const k = e.key;
+  if (!['ArrowRight','ArrowLeft','ArrowUp','ArrowDown','Enter'].includes(k)) return;
+  e.preventDefault();
+  const days = _tjReal ? _tjReal.daysInMonth : 31;
+  const rows = _tjManual.length;
+  let ni = i, nd = d;
+  if (k === 'ArrowRight' || k === 'Enter') nd = d + 1;
+  else if (k === 'ArrowLeft') nd = d - 1;
+  else if (k === 'ArrowDown') ni = i + 1;
+  else if (k === 'ArrowUp') ni = i - 1;
+  if (nd > days) { nd = 1; ni = ni + 1; }
+  if (nd < 1) { nd = days; ni = ni - 1; }
+  if (ni < 0 || ni >= rows) return;
+  const t = document.getElementById(`tj-in-${ni}-${nd}`);
+  if (t) { t.focus(); t.select(); }
 }
 
 async function workerLogin() {
