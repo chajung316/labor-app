@@ -105,6 +105,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 .doc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .doc-table th { background: #f0f0f0; padding: 7px 4px; border: 1px solid #ddd; text-align: center; white-space: nowrap; }
 .doc-table td { padding: 7px 4px; border: 1px solid #eee; text-align: center; }
+body.hide-money .money-cell { display: none !important; }
 .lock-btn { font-size: 12px; padding: 4px 10px; border: 1px solid #ddd; border-radius: 6px; background: #fff; cursor: pointer; color: #888; }
 </style>
 </head>
@@ -112,7 +113,7 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
 <div class="container">
   <h1>⚒️ 노무비 공수 조회 <span style="font-size:13px;color:#185FA5;font-weight:400;">[관리자]</span></h1>
   <div style="text-align:center;margin-bottom:1rem;"><a href="labor-app.html" style="font-size:13px;color:#888;text-decoration:none;">→ 작업자용 페이지로</a></div>
-  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0628-L (필수서류)</div>
+  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0628-M (권한 2단계)</div>
   <div class="tab-bar" style="margin-bottom:5px;">
     <div class="tab active" data-tab="worker" onclick="showTab('worker')">공수조회</div>
     <div class="tab" data-tab="manage" onclick="showTab('manage')">관리</div>
@@ -410,18 +411,39 @@ input:focus, select:focus { border-color: #185FA5; background: #fff; }
       </div>
       <div class="card">
         <div class="card-title collapsible-head" onclick="toggleCard('pass')">
-          <span>🔑 관리자 비밀번호 변경</span>
+          <span>🔑 마스터 비밀번호 변경</span>
           <span class="toggle-arrow" id="arrow-pass">▼ 펼치기</span>
         </div>
         <div class="card-body" id="body-pass" style="display:none;">
           <label>현재 비밀번호</label>
-          <input type="password" id="cp-old" placeholder="현재 비밀번호">
+          <input type="password" id="cp-old" placeholder="현재 마스터 비밀번호">
           <label>새 비밀번호</label>
           <input type="password" id="cp-new" placeholder="새 비밀번호">
           <label>새 비밀번호 확인</label>
           <input type="password" id="cp-new2" placeholder="새 비밀번호 다시 입력">
           <button class="btn primary" onclick="changePassword()">비밀번호 변경</button>
           <div id="cp-msg" class="msg"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title collapsible-head" onclick="toggleCard('perm')">
+          <span>👁️ 보기 권한 설정 <span style="color:#185FA5;font-size:11px;font-weight:400;">(2번 비밀번호)</span></span>
+          <span class="toggle-arrow" id="arrow-perm">▼ 펼치기</span>
+        </div>
+        <div class="card-body" id="body-perm" style="display:none;">
+          <div style="font-size:12px;color:#888;margin-bottom:10px;line-height:1.5;">보기 비밀번호로 들어온 사람에게 <strong>무엇을 보여줄지</strong> 정해요. 마스터 비밀번호는 항상 전체 권한이에요.</div>
+          <label>보기 비밀번호 (비우면 사용 안 함)</label>
+          <input type="text" id="pm-viewpass" placeholder="예: 5678">
+          <label style="margin-top:12px;display:block;">보여줄 메뉴</label>
+          <div id="pm-tabs" style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:4px;"></div>
+          <label style="margin-top:14px;display:block;">세부 옵션</label>
+          <div style="margin-top:4px;">
+            <label style="font-weight:400;font-size:14px;display:flex;align-items:center;gap:8px;margin:4px 0;"><input type="checkbox" id="pm-money" style="transform:scale(1.2);"> 인원목록에서 <strong>일당·노무비 금액</strong> 보이기</label>
+            <label style="font-weight:400;font-size:14px;display:flex;align-items:center;gap:8px;margin:4px 0;"><input type="checkbox" id="pm-edit" style="transform:scale(1.2);"> <strong>수정·업로드·삭제</strong> 허용 (끄면 읽기 전용)</label>
+          </div>
+          <div style="font-size:11px;color:#999;margin-top:10px;line-height:1.5;">※ 작업자 비밀번호 초기화 · 현장 데이터 삭제 · 이 설정 변경은 <strong>마스터 전용</strong>으로 항상 고정돼요.</div>
+          <button class="btn primary" style="margin-top:12px;" onclick="savePerm()">권한 저장</button>
+          <div id="pm-msg" class="msg"></div>
         </div>
       </div>
       <div class="card">
@@ -468,12 +490,43 @@ const SUPA_URL = 'https://iolokjrqgxdvtztssvql.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlvbG9ranJxZ3hkdnR6dHNzdnFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzODgwMjcsImV4cCI6MjA5Nzk2NDAyN30.Zr2pE1JsziO4V__AVAKiI2BDRqyda_vS_p95PqTL9S8';
 const ADMIN_KEY = 'admin_password';
 
-function getAdminPass() { return localStorage.getItem(ADMIN_KEY) || '0000'; }
-function setAdminPass(p) { localStorage.setItem(ADMIN_KEY, p); }
+// ===== 권한 (마스터 / 보기) =====
+const DEFAULT_PERM = { tabs: { worker:true, list:true, payslip:false, toejik:false, docs:false, manage:false, upload:false }, showMoney:false, allowEdit:false };
+let _perm = JSON.parse(JSON.stringify(DEFAULT_PERM));
+let _masterPass = null;
+let _viewerPass = '';
+window._adminRole = null; // 'master' | 'viewer'
+
+function getAdminPass() { return _masterPass || localStorage.getItem(ADMIN_KEY) || '0000'; }
+function isMaster() { return window._adminRole === 'master'; }
+function canEdit() { return window._adminRole === 'master' || (window._adminRole === 'viewer' && _perm.allowEdit); }
+function requireMaster(msg) { if (!isMaster()) { alert(msg || '이 기능은 마스터 비밀번호로만 사용할 수 있어요.'); return false; } return true; }
+function requireEdit() { if (!canEdit()) { alert('보기 전용 권한이라 수정할 수 없어요.'); return false; } return true; }
+function canSeeTab(t) {
+  if (window._adminRole === 'master') return true;
+  if (window._adminRole === 'viewer') { if (t === 'settings') return false; return !!_perm.tabs[t]; }
+  return false;
+}
+
+async function loadAuthConfig() {
+  try {
+    const rows = await db('GET', 'app_settings', null, 'key=in.(admin_master_pass,admin_viewer_pass,admin_perm)&select=key,value');
+    if (rows) rows.forEach(r => {
+      if (r.key === 'admin_master_pass') _masterPass = r.value || _masterPass;
+      if (r.key === 'admin_viewer_pass') _viewerPass = r.value || '';
+      if (r.key === 'admin_perm' && r.value) {
+        try { const p = JSON.parse(r.value); _perm = { tabs: Object.assign({}, DEFAULT_PERM.tabs, p.tabs || {}), showMoney: !!p.showMoney, allowEdit: !!p.allowEdit }; } catch(e) {}
+      }
+    });
+  } catch(e) {}
+  if (!_masterPass) _masterPass = localStorage.getItem(ADMIN_KEY) || '0000';
+}
+
+function setAdminPass(p) { _masterPass = p; localStorage.setItem(ADMIN_KEY, p); }
 function confirmWithPass(msg) {
-  const p = prompt(msg + '\n\n실행하려면 관리자 비밀번호를 입력하세요:');
+  const p = prompt(msg + '\n\n실행하려면 마스터 비밀번호를 입력하세요:');
   if (p === null) return false; // 취소
-  if (p !== getAdminPass()) { alert('관리자 비밀번호가 일치하지 않아 취소됐어요.'); return false; }
+  if (p !== getAdminPass()) { alert('마스터 비밀번호가 일치하지 않아 취소됐어요.'); return false; }
   return true;
 }
 
@@ -504,42 +557,58 @@ function showMsg(id, text, type) {
   el.textContent = text;
 }
 
-function adminUnlock(tab) {
+async function adminUnlock(tab) {
   const passMap = { worker:'aw-pass', upload:'al-pass', manage:'am-pass', list:'alist-pass', stats:'astats-pass', payslip:'apay-pass', toejik:'atj-pass', docs:'adoc-pass', settings:'aset-pass' };
   const msgMap  = { worker:'aw-msg',  upload:'al-msg',  manage:'am-msg',  list:'alist-msg',  stats:'astats-msg', payslip:'apay-msg', toejik:'atj-msg', docs:'adoc-msg', settings:'aset-msg' };
   const input = document.getElementById(passMap[tab]);
-  if (input.value !== getAdminPass()) {
-    showMsg(msgMap[tab], '비밀번호가 틀렸어요', 'error');
-    input.value = ''; return;
-  }
-  // 한 번 풀면 모든 탭 해제
+  const val = input.value;
+  await loadAuthConfig();
+  let role = null;
+  if (val && val === getAdminPass()) role = 'master';
+  else if (_viewerPass && val === _viewerPass) role = 'viewer';
+  if (!role) { showMsg(msgMap[tab], '비밀번호가 틀렸어요', 'error'); input.value = ''; return; }
   window._adminUnlocked = true;
-  ['upload','manage','list','stats','payslip','toejik','docs','settings'].forEach(t => {
+  window._adminRole = role;
+  input.value = '';
+  applyRoleVisibility();
+  if (canSeeTab('manage')) loadManageSites();
+  if (canSeeTab('list')) loadList();
+  if (canSeeTab('payslip')) loadPaySlipSites();
+  if (canSeeTab('toejik')) loadToejikSites();
+  if (canSeeTab('docs')) loadDocsSites();
+  if (canSeeTab('upload')) loadUploadSites();
+  if (isMaster()) loadPermUI();
+  revealWorkerAdminBox();
+  if (!canSeeTab(tab)) showTab('worker');
+}
+
+function applyRoleVisibility() {
+  ['worker','manage','list','payslip','toejik','docs','upload','settings'].forEach(t => {
+    const show = window._adminUnlocked && canSeeTab(t);
+    const btn = document.querySelector(`.tab[data-tab="${t}"]`);
+    if (btn) btn.style.display = (!window._adminUnlocked || canSeeTab(t)) ? '' : 'none';
     const lk = document.getElementById(`${t}-lock`);
     const ct = document.getElementById(`${t}-content`);
-    if (lk) lk.style.display = 'none';
-    if (ct) ct.style.display = 'block';
+    if (lk) lk.style.display = show ? 'none' : 'block';
+    if (ct) ct.style.display = show ? 'block' : 'none';
   });
-  input.value = '';
-  if (tab === 'manage') loadManageSites();
-  if (tab === 'list') loadList();
-  if (tab === 'stats') loadStatSites();
-  if (tab === 'payslip') loadPaySlipSites();
-  if (tab === 'toejik') loadToejikSites();
-  if (tab === 'settings') loadManageSites();
-  loadUploadSites();
-  revealWorkerAdminBox();
+  document.body.classList.toggle('hide-money', window._adminRole === 'viewer' && !_perm.showMoney);
+  document.body.classList.toggle('view-readonly', window._adminRole === 'viewer' && !_perm.allowEdit);
 }
 
 function adminLock() {
-  ['upload','manage','list','stats','payslip','toejik','docs','settings'].forEach(tab => {
+  window._adminUnlocked = false;
+  window._adminRole = null;
+  ['worker','upload','manage','list','stats','payslip','toejik','docs','settings'].forEach(tab => {
     const lock = document.getElementById(`${tab}-lock`);
     const content = document.getElementById(`${tab}-content`);
     if (lock) lock.style.display = 'block';
     if (content) content.style.display = 'none';
   });
-  window._adminUnlocked = false;
+  document.querySelectorAll('.tab').forEach(b => b.style.display = '');
+  document.body.classList.remove('hide-money', 'view-readonly');
   revealWorkerAdminBox();
+  showTab('worker');
 }
 
 function revealWorkerAdminBox() {
@@ -609,17 +678,20 @@ async function persistHistSettings() {
 }
 
 async function onHistModeChange(v) {
+  if (!requireEdit()) { refreshHistUI(); return; }
   _histMode = v;
   document.getElementById('hist-period-box').style.display = (v === 'period') ? 'block' : 'none';
   if (v === 'period') await loadHistSites();
   await persistHistSettings();
 }
 async function onHistSiteChange(v) {
+  if (!requireEdit()) { refreshHistUI(); return; }
   _histSite = v; _histMonth = '';
   await loadHistMonths();
   await persistHistSettings();
 }
 async function onHistMonthChange(v) {
+  if (!requireEdit()) { refreshHistUI(); return; }
   _histMonth = v;
   await persistHistSettings();
 }
@@ -667,22 +739,60 @@ async function refreshHistUI() {
   if (_histMode === 'period') { await loadHistSites(); await loadHistMonths(); }
 }
 
+const PERM_TAB_LABELS = { worker:'공수조회', list:'인원목록', payslip:'명세서', toejik:'퇴직공제', docs:'서류', manage:'관리', upload:'업로드' };
+function loadPermUI() {
+  loadAuthConfig().then(() => {
+    const vp = document.getElementById('pm-viewpass'); if (vp) vp.value = _viewerPass || '';
+    const box = document.getElementById('pm-tabs');
+    if (box) {
+      box.innerHTML = '';
+      Object.keys(PERM_TAB_LABELS).forEach(t => {
+        const checked = _perm.tabs[t] ? 'checked' : '';
+        box.innerHTML += `<label style="font-weight:400;font-size:14px;display:flex;align-items:center;gap:6px;"><input type="checkbox" class="pm-tab" data-tab="${t}" ${checked} style="transform:scale(1.2);"> ${PERM_TAB_LABELS[t]}</label>`;
+      });
+    }
+    const m = document.getElementById('pm-money'); if (m) m.checked = !!_perm.showMoney;
+    const e = document.getElementById('pm-edit'); if (e) e.checked = !!_perm.allowEdit;
+  });
+}
+
+async function savePerm() {
+  if (!requireMaster()) return;
+  const viewpass = document.getElementById('pm-viewpass').value.trim();
+  if (viewpass && viewpass === getAdminPass()) { showMsg('pm-msg', '보기 비밀번호는 마스터 비밀번호와 다르게 정해주세요', 'error'); return; }
+  const tabs = {};
+  document.querySelectorAll('.pm-tab').forEach(c => { tabs[c.dataset.tab] = c.checked; });
+  tabs.worker = true; // 공수조회는 기본 허용
+  const perm = { tabs, showMoney: document.getElementById('pm-money').checked, allowEdit: document.getElementById('pm-edit').checked };
+  try {
+    await saveSetting('admin_viewer_pass', viewpass);
+    await saveSetting('admin_perm', JSON.stringify(perm));
+    _viewerPass = viewpass; _perm = perm;
+    showMsg('pm-msg', viewpass ? '✅ 저장됐어요 — 보기 비밀번호로 위 설정대로 보여요' : '✅ 저장됐어요 (보기 비밀번호 사용 안 함)', 'success');
+  } catch(e) {
+    showMsg('pm-msg', `⚠️ 저장 실패: ${e.message}`, 'error');
+  }
+}
+
 function changePassword() {
+  if (!requireMaster()) return;
   const oldP = document.getElementById('cp-old').value;
   const newP = document.getElementById('cp-new').value;
   const newP2 = document.getElementById('cp-new2').value;
   if (oldP !== getAdminPass()) return showMsg('cp-msg', '현재 비밀번호가 틀렸어요', 'error');
   if (!newP) return showMsg('cp-msg', '새 비밀번호를 입력해주세요', 'error');
   if (newP !== newP2) return showMsg('cp-msg', '새 비밀번호가 일치하지 않아요', 'error');
-  if (!confirm('관리자 비밀번호를 변경할까요?')) return;
+  if (!confirm('마스터 비밀번호를 변경할까요?')) return;
   setAdminPass(newP);
+  saveSetting('admin_master_pass', newP).catch(() => {});
   document.getElementById('cp-old').value = '';
   document.getElementById('cp-new').value = '';
   document.getElementById('cp-new2').value = '';
-  showMsg('cp-msg', '비밀번호가 변경됐어요!', 'success');
+  showMsg('cp-msg', '마스터 비밀번호가 변경됐어요!', 'success');
 }
 
 async function renameSite() {
+  if (!requireMaster()) return;
   const sel = document.getElementById('rn-site');
   const oldName = sel.value;
   const newName = document.getElementById('rn-new').value.trim();
@@ -930,6 +1040,7 @@ function renderDocs() {
 }
 
 async function toggleDoc(kind, i, checked) {
+  if (!requireEdit()) { renderDocs(); return; }
   if (!_docsData) return;
   const r = _docsData.rows[i];
   try {
@@ -974,7 +1085,7 @@ function showTab(tab) {
   tabs.forEach(t => { const s = document.getElementById('screen-' + t); if (s) s.classList.toggle('active', t === tab); });
   if (tab === 'worker') { revealWorkerAdminBox(); }
   // 이미 잠금 해제됐으면 해당 탭도 바로 열기
-  if (window._adminUnlocked) {
+  if (window._adminUnlocked && canSeeTab(tab)) {
     const lk = document.getElementById(`${tab}-lock`);
     const ct = document.getElementById(`${tab}-content`);
     if (lk) lk.style.display = 'none';
@@ -985,7 +1096,7 @@ function showTab(tab) {
     if (tab === 'toejik') loadToejikSites();
     if (tab === 'docs') loadDocsSites();
     if (tab === 'upload') loadUploadSites();
-    if (tab === 'settings') loadManageSites();
+    if (tab === 'settings') { loadManageSites(); loadPermUI(); }
   }
 }
 
@@ -1088,6 +1199,7 @@ async function previewDelete() {
 }
 
 async function deleteData() {
+  if (!requireMaster()) return;
   const site = document.getElementById('m-site').value;
   const month = document.getElementById('m-month').value;
   if (!confirmWithPass(`${site} · ${month} 데이터를 정말 삭제할까요? (복구 불가)`)) return;
@@ -1496,6 +1608,7 @@ function handleTouch(e, pi, d) {
 }
 
 async function saveEditTable() {
+  if (!requireEdit()) return;
   const btn = document.getElementById('ed-save-btn');
   btn.innerHTML = '<span class="spinner"></span>저장 중...';
   btn.disabled = true;
@@ -1738,6 +1851,7 @@ function showPreview(workers) {
 }
 
 async function uploadToSupabase() {
+  if (!requireEdit()) return;
   const site_name = document.getElementById('u-site').value.trim();
   const year_month = document.getElementById('u-month').value;
   const company_name = document.getElementById('u-company').value.trim() || '주식회사 네오시티';
@@ -1802,6 +1916,7 @@ function filterWorkers() {
 }
 
 async function resetWorkerPw(id, name) {
+  if (!requireMaster()) return;
   if (!confirmWithPass(`${name}님의 비밀번호를 초기화할까요? (다음 조회 때 새로 설정하게 돼요)`)) return;
   try {
     await db('PATCH', `workers?id=eq.${id}`, { password: null, pw_fails: 0, locked: false });
@@ -1869,9 +1984,9 @@ async function loadWorkerHistory(workerId, idx) {
           <div class="history-stats">
             <span>일수 <strong style="color:#185FA5;">${r.total_days}</strong></span>
             <span>공수 <strong style="color:#185FA5;">${parseFloat(r.total_work).toFixed(1)}</strong></span>
-            <span>일당 <strong style="color:${wage?'#e65100':'#bbb'};">${wage ? wage.toLocaleString() : '미입력'}</strong></span>
+            <span class="money-cell">일당 <strong style="color:${wage?'#e65100':'#bbb'};">${wage ? wage.toLocaleString() : '미입력'}</strong></span>
           </div>
-          ${wage ? `<div style="font-size:13px;margin-top:6px;padding-top:6px;border-top:1px dashed #ddd;">노무비 <strong style="color:#c62828;font-size:15px;">${amount.toLocaleString()}원</strong></div>` : ''}
+          ${wage ? `<div class="money-cell" style="font-size:13px;margin-top:6px;padding-top:6px;border-top:1px dashed #ddd;">노무비 <strong style="color:#c62828;font-size:15px;">${amount.toLocaleString()}원</strong></div>` : ''}
         </div>`;
       }).join('')}`;
   } catch(e) { dataDiv.innerHTML = `<div style="color:#c62828;font-size:13px;">${e.message}</div>`; }
@@ -1894,7 +2009,7 @@ async function loadWorkerDetail(workerId, idx) {
       <div style="display:flex;gap:12px;margin:8px 0;flex-wrap:wrap;">
         <div style="font-size:13px;"><span style="color:#888;">일수</span> <strong style="color:#185FA5;">${rec.total_days}</strong></div>
         <div style="font-size:13px;"><span style="color:#888;">공수</span> <strong style="color:#185FA5;">${parseFloat(rec.total_work).toFixed(1)}</strong></div>
-        ${rec.daily_wage ? `<div style="font-size:13px;"><span style="color:#888;">일당</span> <strong style="color:#e65100;">${parseInt(rec.daily_wage).toLocaleString()}</strong></div><div style="font-size:13px;"><span style="color:#888;">노무비</span> <strong style="color:#c62828;">${(parseInt(rec.daily_wage)*parseFloat(rec.total_work||0)).toLocaleString()}원</strong></div>` : `<div style="font-size:13px;"><span style="color:#888;">일당</span> <strong style="color:#bbb;">미입력</strong></div>`}
+        ${rec.daily_wage ? `<div class="money-cell" style="font-size:13px;"><span style="color:#888;">일당</span> <strong style="color:#e65100;">${parseInt(rec.daily_wage).toLocaleString()}</strong></div><div class="money-cell" style="font-size:13px;"><span style="color:#888;">노무비</span> <strong style="color:#c62828;">${(parseInt(rec.daily_wage)*parseFloat(rec.total_work||0)).toLocaleString()}원</strong></div>` : `<div class="money-cell" style="font-size:13px;"><span style="color:#888;">일당</span> <strong style="color:#bbb;">미입력</strong></div>`}
       </div>
       <div style="font-size:12px;color:#e65100;background:#fff3e0;padding:8px 10px;border-radius:8px;margin-bottom:8px;">
         💡 공수 칸을 <strong>클릭</strong>하면 빨간색(특이사항)으로 표시돼요. 다시 누르면 해제!
@@ -1938,6 +2053,7 @@ function toggleRed(idx, day) {
 }
 
 async function saveRedDays(idx) {
+  if (!requireEdit()) return;
   const data = window._editRec[idx];
   try {
     await db('PATCH', `work_records?id=eq.${data.recordId}`, { red_days: data.red_days });
@@ -2257,6 +2373,7 @@ const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
 document.getElementById('u-month').value = ym;
 loadHistSettings();
 loadSites();
+loadAuthConfig();
 </script>
 </body>
 </html>
