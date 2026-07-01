@@ -114,7 +114,7 @@ body.hide-money .money-cell { display: none !important; }
 <div class="container">
   <h1>⚒️ 노무비 공수 조회 <span style="font-size:13px;color:#185FA5;font-weight:400;">[관리자]</span></h1>
   <div style="text-align:center;margin-bottom:1rem;"><a href="labor-app.html" style="font-size:13px;color:#888;text-decoration:none;">→ 작업자용 페이지로</a></div>
-  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0628-P (체크박스 정렬)</div>
+  <div style="text-align:center;font-size:11px;color:#cbcbcb;margin:-0.6rem 0 0.8rem;">버전 0628-Q (명세서 금액 제외)</div>
   <div class="tab-bar" style="margin-bottom:5px;">
     <div class="tab active" data-tab="worker" onclick="showTab('worker')">공수조회</div>
     <div class="tab" data-tab="manage" onclick="showTab('manage')">관리</div>
@@ -2281,12 +2281,10 @@ function buildPaySlipHTML(worker, rec, month, company) {
       <tr class="ps-daynum">${bot.numRow}</tr>
       <tr class="ps-dayval">${bot.valRow}</tr>
       <tr>
-        <td colspan="3" class="ps-total-label">총 공수</td>
-        <td colspan="3" class="ps-total-val">${parseFloat(rec.total_work).toFixed(1)}</td>
-        <td colspan="3" class="ps-total-label">일 당</td>
-        <td colspan="3" class="ps-total-val">${wage ? wage.toLocaleString() : '-'}</td>
-        <td colspan="2" class="ps-total-label">노무비</td>
-        <td colspan="2" class="ps-total-val">${amount ? amount.toLocaleString() : '-'}</td>
+        <td colspan="4" class="ps-total-label">총 공수</td>
+        <td colspan="4" class="ps-total-val">${parseFloat(rec.total_work).toFixed(1)}</td>
+        <td colspan="4" class="ps-total-label">총 일수</td>
+        <td colspan="4" class="ps-total-val">${(rec.total_days != null && rec.total_days !== '') ? rec.total_days : Object.values(rec.daily_work||{}).filter(v => parseFloat(v) > 0).length}</td>
       </tr>
       <tr>
         <td colspan="8" class="ps-foot-left">${company}</td>
